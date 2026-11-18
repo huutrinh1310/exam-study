@@ -77,4 +77,7 @@ Expected: preview reports 10 accepted questions, no row issues, and the counts 5
 
 ## Completion
 
-Leave the workbook and test change local and uncommitted. Do not push to GitHub. Report the quiz title and the import result.
+After the user requested a PR, the quiz-only change was committed as
+`2ed9319` on `feature/ccdf` and pushed to GitHub. PR #1 targets `main`; no
+changes were pushed directly to `main`. Report the quiz title and import
+result.
