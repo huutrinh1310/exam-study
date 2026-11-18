@@ -1,10 +1,10 @@
 # Vercel and Supabase Deployment Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Completed steps are checked off below.
 
-**Goal:** Deploy Clearstudy from an isolated local Git branch to Vercel and connect it to a new Supabase project.
+**Goal:** Deploy Clearstudy from GitHub `main` to Vercel and connect it to a new Supabase project.
 
-**Architecture:** Keep the existing Next.js 16 app, local Git history, and Supabase schema. Create an isolated local deployment branch without a remote, provision a new Supabase project, then deploy the working copy directly through the Vercel CLI with production environment variables.
+**Architecture:** Keep the existing Next.js 16 app and Supabase schema. Vercel is connected to `huutrinh1310/exam-study` and deploys pushes to `main`. Configure a new Supabase project and production environment values in Vercel. Do not push changes to GitHub without separate explicit authorization.
 
 **Tech Stack:** Next.js 16, Node.js 24 LTS, npm, Vercel CLI, Supabase PostgreSQL/Auth.
 
@@ -13,12 +13,13 @@
 ## Global Constraints
 
 - Use Node.js 24 LTS and `npm ci`.
-- Do not create a GitHub repository or configure a Git remote.
+- Use the existing GitHub repository `huutrinh1310/exam-study` and branch `main`.
+- Do not push changes to GitHub without separate explicit authorization.
 - Use a free tier where available; do not create paid resources without user approval.
 - Do not stage or commit secrets; do not ask for passwords, access tokens, or service-role keys in chat.
 - Apply `supabase/migrations/202611180001_initial.sql` only to the new Supabase project, exactly once.
 - Use only the Supabase public anon key in `NEXT_PUBLIC_SUPABASE_ANON_KEY`.
-- Use the Vercel-provided `vercel.app` production URL unless the user later requests a custom domain.
+- Use `https://vercel-supabase-deploy-one.vercel.app` unless the user later requests a custom domain.
 - Production SMTP is deferred; report that verification and password-recovery email delivery may not work reliably until configured.
 
 ## Review Focus
@@ -39,10 +40,10 @@
 - Include in preparation commit: approved deployment docs and required config
 
 **Interfaces:**
-- Consumes: the existing local repository on `main`; no Git remote.
+- Consumes: the existing local repository on `main`; Vercel later connected the GitHub remote.
 - Produces: a deployment-preparation commit on `deploy/vercel-supabase`.
 
-- [ ] **Step 1: Run the existing project checks**
+- [x] **Step 1: Run the existing project checks**
 
 Run: `npm.cmd ci`
 Expected: dependencies install from `package-lock.json`. If npm reports that
@@ -59,7 +60,7 @@ Expected: exit code 0.
 Run: `npm.cmd run build`
 Expected: production build succeeds.
 
-- [ ] **Step 2: Create the local deployment branch and inspect staged paths**
+- [x] **Step 2: Create the local deployment branch and inspect staged paths**
 
 Create branch `deploy/vercel-supabase` from the existing `main` commit and
 switch to it before staging the deployment-preparation changes.
@@ -76,7 +77,7 @@ Expected: no whitespace errors; staged paths contain only the intended
 deployment-preparation files and no `.env*`, `node_modules`, `.next`,
 `test-results`, or other generated artifacts.
 
-- [ ] **Step 3: Commit the deployment-preparation changes**
+- [x] **Step 3: Commit the deployment-preparation changes**
 
 Run:
 
@@ -84,9 +85,9 @@ Run:
 git commit -m "chore: prepare Clearstudy for Vercel deployment" -m "Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"
 ```
 
-Expected: the deployment branch contains the preparation commit and `git remote -v` prints no remotes. If Git author identity is missing, ask the user to configure it; do not invent an identity.
+Expected: the deployment branch contains the preparation commit. If Git author identity is missing, ask the user to configure it; do not invent an identity.
 
-- [ ] **Step 4: Create the approved isolated worktree**
+- [x] **Step 4: Create the approved isolated worktree**
 
 Switch the original checkout back to `main`, then add worktree
 `.worktrees/vercel-supabase-deploy` on `deploy/vercel-supabase`. Run subsequent
@@ -104,52 +105,52 @@ ignored by Git.
 - Consumes: a new Supabase project owned by the account/team the user authenticates into.
 - Produces: the project's URL and public anon key, plus the migrated database.
 
-- [ ] **Step 1: Create a Supabase project**
+- [x] **Step 1: Create a Supabase project**
 
 Use the Supabase dashboard under the user's authenticated account. Confirm the displayed account/team, select the free tier if available, and ask the user to choose a region if the appropriate one is unclear. The user enters the database password directly in Supabase.
 
 Expected: a newly created project; no paid plan or add-on is enabled.
 
-- [ ] **Step 2: Apply the initial migration exactly once**
+- [x] **Step 2: Apply the initial migration exactly once**
 
 Paste and run `supabase/migrations/202611180001_initial.sql` in the SQL editor for that new project only.
 
 Expected: the migration succeeds and the expected tables, policies, and functions are visible in the project. Stop on any SQL error; do not rerun a partially applied migration blindly.
 
-- [ ] **Step 3: Record public project settings for Vercel**
+- [x] **Step 3: Record public project settings for Vercel**
 
 Retrieve the project URL and public anon key in the Supabase dashboard. Keep values out of chat and source control; enter them directly into Vercel project settings in Task 3. Never use the service-role key.
 
-### Task 3: Link and deploy the app with Vercel CLI
+### Task 3: Configure and deploy the GitHub-linked Vercel project
 
 **Files:**
 - Local-only generated link: `.vercel/` (already ignored by `.gitignore`)
 
 **Interfaces:**
-- Consumes: the initial local Git commit and Supabase project URL/public anon key.
+- Consumes: GitHub `huutrinh1310/exam-study` branch `main` and the Supabase project URL/public anon key.
 - Produces: the Vercel production URL and a ready production deployment.
 
-- [ ] **Step 1: Authenticate and link the Vercel project**
+- [x] **Step 1: Authenticate and link the Vercel project**
 
-Run `npx.cmd --yes vercel login` and complete the browser authentication directly. Confirm the account/team before creating the project. Run `npx.cmd --yes vercel link` from the project root and create/select a project without importing a Git repository.
+Vercel CLI authenticated as `huutrinh1310` and created `vercel-supabase-deploy` under `huutrinh1310's projects`, connected to `huutrinh1310/exam-study` with production branch `main`. Confirm the project settings show that repository and branch.
 
-Expected: `.vercel/` is present and ignored; `git status --short` shows no generated Vercel metadata.
+Expected: `.vercel/` is present and ignored; Vercel's Git integration points at the requested repository and branch.
 
-- [ ] **Step 2: Configure production settings**
+- [x] **Step 2: Configure production settings**
 
 In Vercel project settings, choose Node.js 24.x and set production environment variables:
 
 - `NEXT_PUBLIC_SUPABASE_URL`: the new Supabase project URL.
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`: that project's public anon key.
-- `NEXT_PUBLIC_SITE_URL`: the exact HTTPS `vercel.app` production origin.
+- `NEXT_PUBLIC_SITE_URL`: `https://vercel-supabase-deploy-one.vercel.app`.
 
 Enter values directly in Vercel; do not paste them into chat or a tracked file. Ensure values are available to the Production environment before the production build.
 
-- [ ] **Step 3: Deploy to production**
+- [x] **Step 3: Deploy to production**
 
-Run: `npx.cmd --yes vercel --prod`
+Vercel CLI deployed the intended local worktree to production after environment settings were saved. The user chose to keep GitHub `main` connected for future automatic deployments, but no code was pushed.
 
-Expected: CLI reports a production deployment URL and Ready status. If the build fails, read the specific deployment logs and correct the cause before retrying.
+Expected: deployment is Ready at `https://vercel-supabase-deploy-one.vercel.app`. If the build fails, read the specific deployment logs and correct the cause before retrying.
 
 ### Task 4: Configure Supabase Auth and smoke-test production
 
@@ -160,20 +161,29 @@ Expected: CLI reports a production deployment URL and Ready status. If the build
 - Consumes: the Vercel production origin and the migrated Supabase project.
 - Produces: production redirect settings and a verified public site.
 
-- [ ] **Step 1: Configure production Auth URLs**
+- [x] **Step 1: Configure production Auth URLs**
 
-In Supabase Authentication URL settings, set Site URL to the exact Vercel production origin and add `<production-origin>/auth/callback` to the allowed redirect URLs. Keep redirects limited to the intended production origin.
+Supabase Authentication URL settings use `https://vercel-supabase-deploy-one.vercel.app` as Site URL and allow `https://vercel-supabase-deploy-one.vercel.app/auth/callback`.
 
 Expected: production Site URL and callback match the Vercel deployment exactly.
 
-- [ ] **Step 2: Redeploy if environment values changed**
+- [x] **Step 2: Redeploy if environment values changed**
 
-If `NEXT_PUBLIC_SITE_URL` or any public Supabase value was changed after the build, run `npx.cmd --yes vercel --prod` again.
+If `NEXT_PUBLIC_SITE_URL` or any public Supabase value is changed after the build, redeploy from Vercel so the production bundle uses the final values. This was done after setting the production origin.
 
 Expected: the Ready production deployment was built with the final values.
 
-- [ ] **Step 3: Verify the deployed site**
+- [x] **Step 3: Verify the deployed site**
 
 Open the production URL and confirm the landing page loads without browser errors. Open the authentication page and confirm the app reaches its configured state. Check Vercel deployment status and Supabase database objects.
 
-Expected: site is live and configured against the new Supabase project. Report that email verification/password recovery remain dependent on the user's deferred SMTP setup.
+Expected: site is live and configured against the new Supabase project. Landing and sign-up pages returned HTTP 200. Email verification/password recovery remain dependent on the user's deferred SMTP setup.
+
+## Completed deployment notes
+
+- Supabase project `clearstudy` was created on the free tier, and the initial migration was applied once. Verification found the expected five tables, RLS enabled on all five, and seven application functions.
+- Vercel project `vercel-supabase-deploy` is connected to GitHub `huutrinh1310/exam-study`, production branch `main`, and uses Node.js 24.x.
+- Production environment variables are configured with the Supabase project URL, its public publishable key, and the production origin. No service-role key is used by the app.
+- The production deployment is Ready at `https://vercel-supabase-deploy-one.vercel.app`; landing and sign-up smoke tests returned HTTP 200.
+- The initial deployment was made from the local deployment worktree. No code was pushed to GitHub; future pushes to `main` are configured to deploy automatically.
+- SMTP remains deferred. GitHub `main` does not yet include the local lockfile repair committed on `deploy/vercel-supabase`.
