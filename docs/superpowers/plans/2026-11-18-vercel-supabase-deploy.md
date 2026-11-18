@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Deploy Clearstudy from a local Git repository to Vercel and connect it to a new Supabase project.
+**Goal:** Deploy Clearstudy from an isolated local Git branch to Vercel and connect it to a new Supabase project.
 
-**Architecture:** Keep the existing Next.js 16 app and Supabase schema. Initialize Git locally without a remote, provision a new Supabase project, then deploy the working copy directly through the Vercel CLI with production environment variables.
+**Architecture:** Keep the existing Next.js 16 app, local Git history, and Supabase schema. Create an isolated local deployment branch without a remote, provision a new Supabase project, then deploy the working copy directly through the Vercel CLI with production environment variables.
 
 **Tech Stack:** Next.js 16, Node.js 24 LTS, npm, Vercel CLI, Supabase PostgreSQL/Auth.
 
@@ -31,20 +31,24 @@
 
 ---
 
-### Task 1: Initialize and verify the local Git repository
+### Task 1: Prepare an isolated local deployment branch
 
 **Files:**
-- Read: `.gitignore`
-- Include in initial commit: existing project files and approved deployment docs
+- Modify: `.gitignore` (ignore the approved local worktree directory)
+- Modify: `package-lock.json` only if needed to restore a clean npm install
+- Include in preparation commit: approved deployment docs and required config
 
 **Interfaces:**
-- Consumes: the existing working directory; no Git remote.
-- Produces: a local Git repository with an initial commit.
+- Consumes: the existing local repository on `main`; no Git remote.
+- Produces: a deployment-preparation commit on `deploy/vercel-supabase`.
 
 - [ ] **Step 1: Run the existing project checks**
 
 Run: `npm.cmd ci`
-Expected: dependencies install from `package-lock.json`.
+Expected: dependencies install from `package-lock.json`. If npm reports that
+the lockfile is out of sync, run
+`npm.cmd install --package-lock-only --ignore-scripts --no-audit --no-fund`,
+inspect the resulting lockfile diff, then rerun `npm.cmd ci`.
 
 Run: `npm.cmd run typecheck`
 Expected: exit code 0.
@@ -55,24 +59,41 @@ Expected: exit code 0.
 Run: `npm.cmd run build`
 Expected: production build succeeds.
 
-- [ ] **Step 2: Initialize Git and inspect the staged paths**
+- [ ] **Step 2: Create the local deployment branch and inspect staged paths**
 
-Run: `git init`
-Run: `git add -A`
+Create branch `deploy/vercel-supabase` from the existing `main` commit and
+switch to it before staging the deployment-preparation changes.
+
+Stage only `.gitignore`, `package-lock.json` if it changed, the approved
+deployment design and plan, and any other explicitly required source change.
+Do not stage `next-env.d.ts` if it changed only because `next build` refreshed
+generated route-type references.
+
 Run: `git diff --cached --check`
 Run: `git diff --cached --name-only`
 
-Expected: no whitespace errors; staged paths contain the project and approved docs but no `.env*`, `node_modules`, `.next`, `test-results`, or other generated artifacts.
+Expected: no whitespace errors; staged paths contain only the intended
+deployment-preparation files and no `.env*`, `node_modules`, `.next`,
+`test-results`, or other generated artifacts.
 
-- [ ] **Step 3: Create the initial commit**
+- [ ] **Step 3: Commit the deployment-preparation changes**
 
 Run:
 
 ```powershell
-git commit -m "chore: initialize Clearstudy deployment repository" -m "Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"
+git commit -m "chore: prepare Clearstudy for Vercel deployment" -m "Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"
 ```
 
-Expected: one initial commit exists and `git remote -v` prints no remotes. If Git author identity is missing, ask the user to configure it; do not invent an identity.
+Expected: the deployment branch contains the preparation commit and `git remote -v` prints no remotes. If Git author identity is missing, ask the user to configure it; do not invent an identity.
+
+- [ ] **Step 4: Create the approved isolated worktree**
+
+Switch the original checkout back to `main`, then add worktree
+`.worktrees/vercel-supabase-deploy` on `deploy/vercel-supabase`. Run subsequent
+deployment tasks from the worktree.
+
+Expected: worktree is on `deploy/vercel-supabase`, and `.worktrees/` remains
+ignored by Git.
 
 ### Task 2: Provision the new Supabase project and schema
 

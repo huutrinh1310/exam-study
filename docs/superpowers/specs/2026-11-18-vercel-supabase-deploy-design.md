@@ -7,7 +7,8 @@ Supabase project so visitors can use its account and exam-study features.
 
 ## Goals
 
-- Initialize a local Git repository and create an initial commit.
+- Preserve the existing local Git history and make a deployment-preparation
+  commit on an isolated local branch.
 - Deploy the existing app to Vercel from this working copy using the Vercel CLI.
 - Create a new Supabase project and apply the existing initial migration.
 - Configure the app's Supabase URL, public anon key, and production site URL.
@@ -38,9 +39,10 @@ Supabase project so visitors can use its account and exam-study features.
 
 - Use the project's existing Next.js 16 and npm setup. The README specifies
   Node.js 24 LTS and `npm ci`; retain those runtime and build expectations.
-- Initialize Git in the project directory and make one initial commit. Respect
-  `.gitignore`, especially `.env*`, `node_modules`, and `.next`; do not commit
-  secrets or generated local artifacts. Do not configure a remote.
+- Preserve the existing `main` history. Create a local
+  `deploy/vercel-supabase` branch and worktree for deployment. Respect
+  `.gitignore`, especially `.env*`, `node_modules`, `.next`, and `.worktrees/`;
+  do not commit secrets or generated local artifacts. Do not configure a remote.
 - Create a new Supabase project on the free tier if available; do not choose a
   paid plan or add paid services without confirmation. Use the user's preferred
   region, or ask before choosing if it is not clear in the dashboard.
@@ -67,8 +69,8 @@ Supabase project so visitors can use its account and exam-study features.
 
 ## Acceptance criteria
 
-- A local Git repository contains the intended project files in its initial
-  commit and has no remote configured.
+- The existing local Git repository and `main` history are preserved; the
+  deployment branch contains the required setup changes and has no remote.
 - The Vercel production URL serves the app successfully.
 - The app can connect to the new Supabase project without exposing a
   service-role key.
