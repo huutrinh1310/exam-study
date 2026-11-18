@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import ExcelJS from "exceljs";
 import { describe, expect, it } from "vitest";
 import { parseWorkbook, type ImportResult } from "../src/lib/import";
@@ -81,6 +82,24 @@ async function importOneRow(
 }
 
 describe("parseWorkbook", () => {
+  it("imports the CCDF practice workbook with all supported question kinds", async () => {
+    const bytes = await readFile(
+      new URL("../test-data/ccdf-practice-mock.xlsx", import.meta.url),
+    );
+    const result = await parseWorkbook(
+      bytes.buffer.slice(
+        bytes.byteOffset,
+        bytes.byteOffset + bytes.byteLength,
+      ) as ArrayBuffer,
+    );
+
+    expect(result.errors).toEqual([]);
+    expect(result.questions).toHaveLength(10);
+    expect(result.questions.filter(({ kind }) => kind === "single")).toHaveLength(5);
+    expect(result.questions.filter(({ kind }) => kind === "multiple")).toHaveLength(3);
+    expect(result.questions.filter(({ kind }) => kind === "yes_no")).toHaveLength(2);
+  });
+
   it("finds a header offset to row 2, skips the decorative labels and blank rows", async () => {
     const result = await importOneRow((worksheet) => {
       worksheet.getCell("B1").value = "Workbook title";
