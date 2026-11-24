@@ -87,10 +87,29 @@ source corrections before its 116-question workbook can be saved.
 - Recipients cannot edit quizzes or view another member's attempts.
 - Revoking sharing prevents recipients from loading or submitting those quiz
   questions, including in an existing attempt. Their history metadata remains.
-- Correct answers and explanations are returned only after submitting that
-  question. Answers are immutable after submission; exact matches are required
-  for multiple-answer and YES/NO scoring.
-- Only **submitted answers** are saved. Unsubmitted selections are drafts.
+- Choose a study method from a quiz:
+  - **Practice** gives immediate feedback one question at a time.
+  - **Flashcards** reveal an answer and explanation on demand. Rate each card
+    **Know it** or **Review again**; ratings are saved to your account, persist
+    across visits and devices, and can be used to focus on cards to review.
+  - **Full test** lets you answer selected questions, navigate between them and
+    revise responses. Correctness and explanations stay hidden until you
+    submit the complete test.
+  - **Drag & drop** supports the existing question types. Equivalent click/tap
+    controls are available for answering without dragging, including on touch
+    devices.
+- Authorized signed-in learners may reveal a flashcard answer before a graded
+  submission. This is the intentional exception to graded answer hiding: the
+  answer is fetched only when requested and revealing it does not submit or
+  grade a response. Practice feedback follows each question's submission;
+  full-test feedback follows final submission.
+- Submitted answers cannot be changed; exact matches are required for
+  multiple-answer and YES/NO scoring.
+- Unsubmitted full-test selections are drafts saved only in the same browser;
+  they do not sync across devices and can be restored there when resuming.
+  After final submission, the server validates, scores and saves the complete
+  response set in one transaction. Only submitted answers are stored as graded
+  responses.
 - Uploaded workbook files are not retained; validated question data is stored.
 - DOCX import, timed exams, payments and a public quiz directory are not included.
 
