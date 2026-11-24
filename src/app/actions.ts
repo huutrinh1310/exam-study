@@ -9,7 +9,20 @@ import { isUuid, validateUploadFile } from "@/lib/auth-validation";
 import { parseWorkbook, type ImportResult } from "@/lib/import";
 import { toJson } from "@/lib/json";
 import { choiceLabels, type QuestionAnswer } from "@/lib/quiz";
-import { submissionSchema, type SubmissionFeedback } from "@/lib/study";
+import {
+  flashcardRatingSchema,
+  flashcardRevealSchema,
+  fullTestFeedbackSchema,
+  fullTestResponsesSchema,
+  studyModeSchema,
+  submissionSchema,
+  type FlashcardRating,
+  type FlashcardReveal,
+  type FullTestFeedback,
+  type FullTestResponse,
+  type StudyActionResult,
+  type SubmissionFeedback,
+} from "@/lib/study";
 
 const titleSchema = z.string().trim().min(1).max(120);
 const answerArraySchema = z
@@ -195,6 +208,18 @@ export async function beginAttempt(
     return { error: "The quiz ID is invalid." };
   }
 
+  const modeValues = formData.getAll("mode");
+  if (modeValues.length > 1) {
+    return { error: "Choose one valid study mode." };
+  }
+  const modeResult =
+    modeValues.length === 0
+      ? studyModeSchema.safeParse("practice")
+      : studyModeSchema.safeParse(modeValues[0]);
+  if (!modeResult.success) {
+    return { error: "Choose a valid study mode." };
+  }
+
   const shuffleValues = formData.getAll("shuffle");
   if (
     shuffleValues.length > 1 ||
@@ -229,6 +254,7 @@ export async function beginAttempt(
       p_quiz_id: quizId,
       p_categories: categories.length > 0 ? categories : null,
       p_shuffle: shuffleValues.length === 1,
+      p_mode: modeResult.data,
     });
   } catch (error) {
     return { error: errorText(error, "Could not start the study attempt") };
@@ -292,4 +318,166 @@ export async function answerQuestion(
     };
   }
   return { ok: true, feedback: feedback.data };
+}
+
+export async function revealFlashcard(
+  questionId: string,
+): Promise<StudyActionResult<FlashcardReveal>> {
+  if (!isUuid(questionId)) {
+    return { ok: false, error: "The question ID is invalid." };
+  }
+
+  const account = await getActionAccount();
+  if (!account.ok) {
+    return { ok: false, error: account.error };
+  }
+
+  let result;
+  try {
+    result = await account.client.rpc("get_flashcard_answer", {
+      p_question_id: questionId,
+    });
+  } catch (error) {
+    return {
+      ok: false,
+      error: errorText(error, "Could not reveal this flashcard"),
+    };
+  }
+  if (result.error) {
+    return {
+      ok: false,
+      error: `Could not reveal this flashcard: ${result.error.message}`,
+    };
+  }
+
+  const reveal = flashcardRevealSchema.safeParse(result.data);
+  if (!reveal.success) {
+    return {
+      ok: false,
+      error: `The database returned invalid flashcard reveal data: ${reveal.error.message}`,
+    };
+  }
+  if (reveal.data.question_id !== questionId) {
+    return {
+      ok: false,
+      error: "The database returned a reveal for a different question.",
+    };
+  }
+  return { ok: true, value: reveal.data };
+}
+
+export async function rateFlashcard(
+  questionId: string,
+  rating: FlashcardRating,
+): Promise<StudyActionResult<FlashcardRating>> {
+  if (!isUuid(questionId)) {
+    return { ok: false, error: "The question ID is invalid." };
+  }
+  const parsedRating = flashcardRatingSchema.safeParse(rating);
+  if (!parsedRating.success) {
+    return { ok: false, error: "Choose either known or review." };
+  }
+
+  const account = await getActionAccount();
+  if (!account.ok) {
+    return { ok: false, error: account.error };
+  }
+
+  let result;
+  try {
+    result = await account.client.rpc("rate_flashcard", {
+      p_question_id: questionId,
+      p_rating: parsedRating.data,
+    });
+  } catch (error) {
+    return {
+      ok: false,
+      error: errorText(error, "Could not save your flashcard rating"),
+    };
+  }
+  if (result.error) {
+    return {
+      ok: false,
+      error: `Could not save your flashcard rating: ${result.error.message}`,
+    };
+  }
+
+  const savedRating = flashcardRatingSchema.safeParse(result.data);
+  if (!savedRating.success) {
+    return {
+      ok: false,
+      error: `The database returned an invalid flashcard rating: ${savedRating.error.message}`,
+    };
+  }
+  if (savedRating.data !== parsedRating.data) {
+    return {
+      ok: false,
+      error: "The database saved a different flashcard rating than requested.",
+    };
+  }
+  return { ok: true, value: savedRating.data };
+}
+
+export async function submitFullTest(
+  attemptId: string,
+  responses: FullTestResponse[],
+): Promise<StudyActionResult<FullTestFeedback>> {
+  if (!isUuid(attemptId)) {
+    return { ok: false, error: "The attempt ID is invalid." };
+  }
+  const parsedResponses = fullTestResponsesSchema.safeParse(responses);
+  if (!parsedResponses.success) {
+    return {
+      ok: false,
+      error: `The full-test responses are invalid: ${parsedResponses.error.message}`,
+    };
+  }
+
+  const account = await getActionAccount();
+  if (!account.ok) {
+    return { ok: false, error: account.error };
+  }
+
+  let result;
+  try {
+    result = await account.client.rpc("submit_full_test", {
+      p_attempt_id: attemptId,
+      p_responses: toJson(parsedResponses.data),
+    });
+  } catch (error) {
+    return {
+      ok: false,
+      error: errorText(error, "Could not submit the full test"),
+    };
+  }
+  if (result.error) {
+    return {
+      ok: false,
+      error: `Could not submit the full test: ${result.error.message}`,
+    };
+  }
+
+  const feedback = fullTestFeedbackSchema.safeParse(result.data);
+  if (!feedback.success) {
+    return {
+      ok: false,
+      error: `The database returned invalid full-test feedback: ${feedback.error.message}`,
+    };
+  }
+  const responseIds = new Set(
+    parsedResponses.data.map(({ question_id }) => question_id),
+  );
+  const feedbackIds = new Set(
+    feedback.data.results.map(({ question_id }) => question_id),
+  );
+  if (
+    responseIds.size !== feedbackIds.size ||
+    [...responseIds].some((questionId) => !feedbackIds.has(questionId))
+  ) {
+    return {
+      ok: false,
+      error: "The database returned incomplete or mismatched full-test feedback.",
+    };
+  }
+  return { ok: true, value: feedback.data };
 }

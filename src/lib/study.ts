@@ -1,5 +1,13 @@
 import { z } from "zod";
-import { choiceLabels } from "./quiz";
+import { choiceLabels, type QuestionAnswer as QuizQuestionAnswer } from "./quiz";
+
+export const studyModeSchema = z.enum(["practice", "full_test", "drag_drop"]);
+export type StudyMode = z.infer<typeof studyModeSchema>;
+
+export const flashcardRatingSchema = z.enum(["known", "review"]);
+export type FlashcardRating = z.infer<typeof flashcardRatingSchema>;
+
+export type ChoiceLabel = (typeof choiceLabels)[number];
 
 const choiceLabelSchema = z.enum(choiceLabels);
 const choiceSchema = z
@@ -18,7 +26,15 @@ const multipleAnswerSchema = z
   .array(choiceLabelSchema)
   .min(2)
   .refine((labels) => new Set(labels).size === labels.length);
-const yesNoAnswerSchema = z.record(z.string(), z.boolean());
+const yesNoAnswerSchema = z
+  .record(z.string().regex(/^[A-F]$/), z.boolean())
+  .refine((answer) => Object.keys(answer).length >= 2);
+export const questionAnswerSchema = z.union([
+  singleAnswerSchema,
+  multipleAnswerSchema,
+  yesNoAnswerSchema,
+]);
+export type QuestionAnswer = QuizQuestionAnswer;
 const categorySchema = z.string().trim().min(1).max(100);
 const promptSchema = z.string().trim().min(1).max(10_000);
 const titleSchema = z.string().trim().min(1).max(120);
@@ -198,6 +214,7 @@ export const attemptSchema = z
   .object({
     id: z.uuid(),
     quiz_id: z.uuid(),
+    mode: studyModeSchema,
     title: titleSchema,
     completed_at: isoTimestampSchema.nullable(),
     total: z.number().int().nonnegative(),
@@ -257,7 +274,10 @@ export const attemptSchema = z
     }
   });
 
-export type StudyAttempt = z.infer<typeof attemptSchema>;
+export type ParsedStudyAttempt = z.infer<typeof attemptSchema>;
+export type StudyAttempt = Omit<ParsedStudyAttempt, "mode"> & {
+  mode?: StudyMode;
+};
 
 const submissionAnswerSchema = z.union([
   singleAnswerSchema,
@@ -276,10 +296,132 @@ export const submissionSchema = z
 
 export type SubmissionFeedback = z.infer<typeof submissionSchema>;
 
+const flashcardQuestionSchema = z
+  .object({
+    id: z.uuid(),
+    position: z.number().int().nonnegative(),
+    category: categorySchema,
+    prompt: promptSchema,
+    choices: z.array(choiceSchema).min(2).max(6),
+    kind: z.enum(["single", "multiple", "yes_no"]),
+    rating: flashcardRatingSchema.nullable(),
+  })
+  .strict()
+  .superRefine((question, context) => {
+    const labels = question.choices.map(({ label }) => label);
+    if (new Set(labels).size !== labels.length) {
+      context.addIssue({
+        code: "custom",
+        path: ["choices"],
+        message: "Choice labels must be distinct.",
+      });
+    }
+  });
+
+export const flashcardDeckSchema = z
+  .object({
+    quiz_id: z.uuid(),
+    title: titleSchema,
+    total: z.number().int().nonnegative(),
+    questions: z.array(flashcardQuestionSchema).max(1_000),
+  })
+  .strict()
+  .superRefine((deck, context) => {
+    if (deck.total !== deck.questions.length) {
+      context.addIssue({
+        code: "custom",
+        path: ["total"],
+        message: "Total must match the number of flashcards.",
+      });
+    }
+    if (
+      new Set(deck.questions.map(({ id }) => id)).size !== deck.questions.length
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["questions"],
+        message: "Flashcard question IDs must be unique.",
+      });
+    }
+  });
+
+export type FlashcardDeck = z.infer<typeof flashcardDeckSchema>;
+
+export const flashcardRevealSchema = z
+  .object({
+    question_id: z.uuid(),
+    answer: questionAnswerSchema,
+    explanation: z.string().max(20_000),
+  })
+  .strict();
+
+export type FlashcardReveal = z.infer<typeof flashcardRevealSchema>;
+
+export const fullTestResponseSchema = z
+  .object({
+    question_id: z.uuid(),
+    response: questionAnswerSchema,
+  })
+  .strict();
+
+export type FullTestResponse = z.infer<typeof fullTestResponseSchema>;
+
+export const fullTestResponsesSchema = z
+  .array(fullTestResponseSchema)
+  .min(1)
+  .max(1_000)
+  .superRefine((responses, context) => {
+    if (
+      new Set(responses.map(({ question_id }) => question_id)).size !==
+      responses.length
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Full-test question IDs must be unique.",
+      });
+    }
+  });
+
+export const fullTestFeedbackSchema = z
+  .object({
+    completed: z.literal(true),
+    results: z
+      .array(
+        z
+          .object({
+            question_id: z.uuid(),
+            correct: z.boolean(),
+            answer: questionAnswerSchema,
+            explanation: z.string().max(20_000),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(1_000),
+  })
+  .strict()
+  .superRefine((feedback, context) => {
+    const ids = feedback.results.map(({ question_id }) => question_id);
+    if (new Set(ids).size !== ids.length) {
+      context.addIssue({
+        code: "custom",
+        path: ["results"],
+        message: "Full-test feedback question IDs must be unique.",
+      });
+    }
+  });
+
+export type FullTestFeedback = z.infer<typeof fullTestFeedbackSchema>;
+
+export type StudyActionResult<T> =
+  | { ok: true; value: T }
+  | { ok: false; error: string };
+
 export const attemptSummarySchema = z
   .object({
     id: z.uuid(),
     quiz_id: z.uuid(),
+    mode: studyModeSchema,
     title: titleSchema,
     total: z.number().int().nonnegative(),
     answered: z.number().int().nonnegative(),

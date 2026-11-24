@@ -7,10 +7,12 @@ import { isUuid, safeRedirectPath } from "./auth-validation";
 import {
   attemptSchema,
   attemptSummarySchema,
+  flashcardDeckSchema,
   quizOverviewSchema,
   type AttemptSummary,
+  type FlashcardDeck,
+  type ParsedStudyAttempt,
   type QuizOverview,
-  type StudyAttempt,
 } from "./study";
 import { createSupabaseServerClient } from "./supabase/server";
 import { SupabaseConfigurationError } from "./supabase/config";
@@ -115,7 +117,7 @@ export async function getQuiz(id: string): Promise<QuizOverview> {
   return parsed.data;
 }
 
-export async function getAttempt(id: string): Promise<StudyAttempt> {
+export async function getAttempt(id: string): Promise<ParsedStudyAttempt> {
   if (!isUuid(id)) {
     throw dataError("Could not load attempt", "The attempt ID is invalid.");
   }
@@ -131,6 +133,55 @@ export async function getAttempt(id: string): Promise<StudyAttempt> {
   const parsed = attemptSchema.safeParse(data);
   if (!parsed.success) {
     throw dataError("Could not load attempt", "The database returned invalid attempt data.");
+  }
+  return parsed.data;
+}
+
+export async function getFlashcardDeck(
+  quizId: string,
+  categories: string[],
+  reviewOnly: boolean,
+  shuffle: boolean,
+): Promise<FlashcardDeck> {
+  if (!isUuid(quizId)) {
+    throw dataError("Could not load flashcards", "The quiz ID is invalid.");
+  }
+
+  const parsedCategories = z
+    .array(z.string().trim().min(1).max(100))
+    .max(100)
+    .safeParse(categories);
+  if (
+    !parsedCategories.success ||
+    typeof reviewOnly !== "boolean" ||
+    typeof shuffle !== "boolean"
+  ) {
+    throw dataError("Could not load flashcards", "The study options are invalid.");
+  }
+
+  const { client } = await getAccount(`/quiz/${quizId}`);
+  const { data, error } = await client.rpc("get_flashcard_deck", {
+    p_quiz_id: quizId,
+    p_categories:
+      parsedCategories.data.length > 0
+        ? [...new Set(parsedCategories.data)]
+        : null,
+    p_review_only: reviewOnly,
+    p_shuffle: shuffle,
+  });
+  if (error) {
+    throw dataError("Could not load flashcards", error.message);
+  }
+
+  const parsed = flashcardDeckSchema.safeParse(data);
+  if (!parsed.success) {
+    throw dataError("Could not load flashcards", parsed.error.message);
+  }
+  if (parsed.data.quiz_id !== quizId) {
+    throw dataError(
+      "Could not load flashcards",
+      "The database returned flashcards for a different quiz.",
+    );
   }
   return parsed.data;
 }

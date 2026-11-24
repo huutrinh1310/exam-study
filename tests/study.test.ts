@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   attemptSchema,
   attemptSummarySchema,
+  flashcardDeckSchema,
+  flashcardRevealSchema,
+  fullTestFeedbackSchema,
   quizOverviewSchema,
   submissionSchema,
 } from "../src/lib/study";
@@ -18,6 +21,7 @@ const overview = {
 const attempt = {
   id: "00000000-0000-4000-8000-000000000003",
   quiz_id: overview.id,
+  mode: "practice",
   title: overview.title,
   completed_at: null,
   total: 1,
@@ -43,6 +47,7 @@ const attempt = {
 const summary = {
   id: attempt.id,
   quiz_id: overview.id,
+  mode: "practice",
   title: overview.title,
   total: 1,
   answered: 0,
@@ -158,6 +163,110 @@ describe("study output schemas", () => {
         ...summary,
         answered: 1,
         correct: 2,
+      }).success,
+    ).toBe(false);
+  });
+
+  it("accepts each supported study mode and rejects unknown modes", () => {
+    for (const mode of ["practice", "full_test", "drag_drop"]) {
+      expect(attemptSchema.safeParse({ ...attempt, mode }).success).toBe(true);
+      expect(
+        attemptSummarySchema.safeParse({ ...summary, mode }).success,
+      ).toBe(true);
+    }
+
+    expect(
+      attemptSchema.safeParse({ ...attempt, mode: "flashcards" }).success,
+    ).toBe(false);
+    expect(
+      attemptSummarySchema.safeParse({ ...summary, mode: "flashcards" })
+        .success,
+    ).toBe(false);
+  });
+
+  it("parses a flashcard deck without answer-key fields", () => {
+    const deck = {
+      quiz_id: overview.id,
+      title: overview.title,
+      total: 1,
+      questions: [
+        {
+          id: attempt.questions[0].id,
+          position: 0,
+          category: "Cloud",
+          prompt: "Choose the right answer",
+          choices: attempt.questions[0].choices,
+          kind: "single",
+          rating: null,
+        },
+      ],
+    };
+
+    expect(flashcardDeckSchema.parse(deck)).toEqual(deck);
+    expect(
+      flashcardDeckSchema.safeParse({
+        ...deck,
+        questions: [{ ...deck.questions[0], answer: ["A"] }],
+      }).success,
+    ).toBe(false);
+    expect(
+      flashcardDeckSchema.safeParse({
+        ...deck,
+        questions: [{ ...deck.questions[0], explanation: "Answer key" }],
+      }).success,
+    ).toBe(false);
+  });
+
+  it("requires a valid answer and explanation for a flashcard reveal", () => {
+    const reveal = {
+      question_id: attempt.questions[0].id,
+      answer: ["A"],
+      explanation: "First is correct.",
+    };
+    expect(flashcardRevealSchema.parse(reveal)).toEqual(reveal);
+    expect(
+      flashcardRevealSchema.safeParse({
+        ...reveal,
+        answer: ["Z"],
+      }).success,
+    ).toBe(false);
+    expect(
+      flashcardRevealSchema.safeParse({
+        question_id: reveal.question_id,
+        answer: ["A"],
+      }).success,
+    ).toBe(false);
+  });
+
+  it("validates full-test feedback question IDs and feedback values", () => {
+    const feedback = {
+      completed: true,
+      results: [
+        {
+          question_id: attempt.questions[0].id,
+          correct: true,
+          answer: ["A"],
+          explanation: "First is correct.",
+        },
+      ],
+    };
+    expect(fullTestFeedbackSchema.parse(feedback)).toEqual(feedback);
+    expect(
+      fullTestFeedbackSchema.safeParse({
+        ...feedback,
+        results: [{ ...feedback.results[0], question_id: undefined }],
+      }).success,
+    ).toBe(false);
+    expect(
+      fullTestFeedbackSchema.safeParse({
+        ...feedback,
+        results: [...feedback.results, feedback.results[0]],
+      }).success,
+    ).toBe(false);
+    expect(
+      fullTestFeedbackSchema.safeParse({
+        ...feedback,
+        results: [{ ...feedback.results[0], correct: "yes" }],
       }).success,
     ).toBe(false);
   });

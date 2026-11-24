@@ -108,6 +108,7 @@ export type Database = {
           user_id: string;
           quiz_id: string;
           question_ids: string[];
+          mode: "practice" | "full_test" | "drag_drop";
           created_at: string;
           completed_at: string | null;
         };
@@ -116,6 +117,7 @@ export type Database = {
           user_id: string;
           quiz_id: string;
           question_ids: string[];
+          mode?: "practice" | "full_test" | "drag_drop";
           created_at?: string;
           completed_at?: string | null;
         };
@@ -124,6 +126,7 @@ export type Database = {
           user_id?: string;
           quiz_id?: string;
           question_ids?: string[];
+          mode?: "practice" | "full_test" | "drag_drop";
           created_at?: string;
           completed_at?: string | null;
         };
@@ -196,6 +199,7 @@ export type Database = {
           p_quiz_id: string;
           p_categories?: string[] | null;
           p_shuffle?: boolean;
+          p_mode?: "practice" | "full_test" | "drag_drop";
         };
         Returns: string;
       };
@@ -213,6 +217,27 @@ export type Database = {
       };
       list_my_attempts: {
         Args: Record<PropertyKey, never>;
+        Returns: Json;
+      };
+      get_flashcard_deck: {
+        Args: {
+          p_quiz_id: string;
+          p_categories: string[] | null;
+          p_review_only: boolean;
+          p_shuffle: boolean;
+        };
+        Returns: Json;
+      };
+      get_flashcard_answer: {
+        Args: { p_question_id: string };
+        Returns: Json;
+      };
+      rate_flashcard: {
+        Args: { p_question_id: string; p_rating: "known" | "review" };
+        Returns: string;
+      };
+      submit_full_test: {
+        Args: { p_attempt_id: string; p_responses: Json };
         Returns: Json;
       };
     };
