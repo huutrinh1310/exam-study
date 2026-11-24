@@ -22,8 +22,21 @@
 
 ## Scope and Notes
 
-Only the five brief-listed source/test files were modified, plus this requested report. Existing untracked `.superpowers/` and `docs/superpowers/` files in the worktree were left untouched.
+The original implementation modified the five brief-listed source/test files, plus this requested report. The Round 1 fix also updates `tests/study-state.test.ts` to keep its in-memory fixture conformant and compile-time assert required mode. Existing untracked `.superpowers/` and `docs/superpowers/` files in the worktree were left untouched.
 
-`attemptSchema` and the server data adapter enforce a required `StudyMode`. The exported `StudyAttempt` state type keeps `mode` optional to retain compatibility with the existing mode-less in-memory study-state test fixture, which is outside the brief's allowed file list; the stricter parsed type is `ParsedStudyAttempt`.
+The exported `StudyAttempt` and `ParsedStudyAttempt` types now both require the `StudyMode` validated by `attemptSchema`.
 
 No dependencies were added. Nothing was pushed or deployed.
+
+## Round 1 Fix: Required Attempt Mode
+
+- Made `StudyAttempt` directly infer from `attemptSchema`, so `mode` is required. Kept `ParsedStudyAttempt` as an alias for the existing data adapter's exported return type.
+- Updated the in-memory study-state attempt fixture with `mode: "practice"` and added a compile-time assertion that `StudyAttempt.mode` is required.
+
+### TDD and Verification
+
+1. Added the required-mode type assertion and updated the test fixture.
+2. Before changing the exported type, ran `npm.cmd run typecheck`: **RED**, with `tests/study-state.test.ts(8,3): error TS2344: Type 'false' does not satisfy the constraint 'true'.`
+3. Updated `StudyAttempt` to the required schema-inferred type.
+4. Ran `npm.cmd test -- tests/study.test.ts tests/study-state.test.ts`: **GREEN**, 2 files and 14 tests passed.
+5. Ran `npm.cmd run typecheck`: **GREEN**, `tsc --noEmit` passed.

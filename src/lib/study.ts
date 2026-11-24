@@ -274,10 +274,8 @@ export const attemptSchema = z
     }
   });
 
-export type ParsedStudyAttempt = z.infer<typeof attemptSchema>;
-export type StudyAttempt = Omit<ParsedStudyAttempt, "mode"> & {
-  mode?: StudyMode;
-};
+export type StudyAttempt = z.infer<typeof attemptSchema>;
+export type ParsedStudyAttempt = StudyAttempt;
 
 const submissionAnswerSchema = z.union([
   singleAnswerSchema,

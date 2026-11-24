@@ -3,6 +3,11 @@ import type { QuestionAnswer } from "../src/lib/quiz";
 import type { StudyAttempt } from "../src/lib/study";
 import { applySubmission, canSubmitAnswer } from "../src/lib/study-state";
 
+type Assert<T extends true> = T;
+type StudyAttemptModeIsRequired = Assert<
+  {} extends Pick<StudyAttempt, "mode"> ? false : true
+>;
+
 const questionIds = [
   "00000000-0000-4000-8000-000000000011",
   "00000000-0000-4000-8000-000000000012",
@@ -38,6 +43,7 @@ function attemptFixture(): StudyAttempt {
   return {
     id: "00000000-0000-4000-8000-000000000013",
     quiz_id: "00000000-0000-4000-8000-000000000014",
+    mode: "practice",
     title: "Network foundations",
     completed_at: null,
     total: 2,
