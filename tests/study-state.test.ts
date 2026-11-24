@@ -95,12 +95,13 @@ const flashcardQuestions: FlashcardDeck["questions"] = questionIds.map(
   }),
 );
 
-function flashcardState(): FlashcardSessionState {
+function flashcardState(reviewOnly = false): FlashcardSessionState {
   return {
     questions: flashcardQuestions,
     index: 0,
     reveal: null,
     error: "",
+    reviewOnly,
   };
 }
 
@@ -289,6 +290,81 @@ describe("flashcard state transitions", () => {
     },
   );
 
+  it("removes a known card from review-only decks and keeps the next card active", () => {
+    const state = {
+      ...flashcardState(true),
+      reveal: {
+        question_id: questionIds[0],
+        answer: ["B"] as QuestionAnswer,
+        explanation: "The second choice is correct.",
+      },
+    };
+
+    const rated = applyFlashcardRating(
+      state,
+      questionIds[0],
+      { ok: true, value: "known" },
+    );
+
+    expect(rated.questions.map(({ id }) => id)).toEqual([questionIds[1]]);
+    expect(rated.index).toBe(0);
+    expect(rated.questions[rated.index]?.id).toBe(questionIds[1]);
+    expect(rated.reveal).toBeNull();
+  });
+
+  it("completes a review-only deck at the end when its last card is marked known", () => {
+    const state = {
+      ...flashcardState(true),
+      questions: [
+        { ...flashcardQuestions[0], rating: "review" as const },
+        flashcardQuestions[1],
+      ],
+      index: 1,
+      reveal: {
+        question_id: questionIds[1],
+        answer: ["B"] as QuestionAnswer,
+        explanation: "The second choice is correct.",
+      },
+    };
+
+    const rated = applyFlashcardRating(
+      state,
+      questionIds[1],
+      { ok: true, value: "known" },
+    );
+
+    expect(rated.questions).toEqual([
+      { ...flashcardQuestions[0], rating: "review" },
+    ]);
+    expect(rated.index).toBe(1);
+    expect(rated.questions[rated.index]).toBeUndefined();
+    expect(rated.reveal).toBeNull();
+  });
+
+  it("retains a known card in the all-cards deck", () => {
+    const state = {
+      ...flashcardState(false),
+      reveal: {
+        question_id: questionIds[0],
+        answer: ["B"] as QuestionAnswer,
+        explanation: "The second choice is correct.",
+      },
+    };
+
+    const rated = applyFlashcardRating(
+      state,
+      questionIds[0],
+      { ok: true, value: "known" },
+    );
+
+    expect(rated.questions).toHaveLength(2);
+    expect(rated.questions[0]).toMatchObject({
+      id: questionIds[0],
+      rating: "known",
+    });
+    expect(rated.index).toBe(1);
+  });
+
   it("preserves the active card, reveal, and saved rating on rating failure", () => {
     const reveal: FlashcardReveal = {
       question_id: questionIds[0],
@@ -321,7 +397,11 @@ describe("flashcard state transitions", () => {
       value: "known",
     };
 
-    const unchanged = applyFlashcardRating(state, questionIds[0], staleResult);
+    const unchanged = applyFlashcardRating(
+      state,
+      questionIds[0],
+      staleResult,
+    );
 
     expect(unchanged).toBe(state);
     expect(unchanged.index).toBe(1);

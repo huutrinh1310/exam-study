@@ -139,7 +139,7 @@ try {
   assert.deepEqual(
     rpcs.rows.map(({ proname }) => proname),
     [...rpcNames].sort(),
-    "public must contain only the seven declared RPCs",
+    "public must contain only the eleven declared RPCs",
   );
   for (const rpc of rpcs.rows) {
     assert.equal(rpc.security_definer, true, `${rpc.proname} must be SECURITY DEFINER`);

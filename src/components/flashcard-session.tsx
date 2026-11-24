@@ -60,6 +60,7 @@ export default function FlashcardSession({
     index: 0,
     reveal: null,
     error: "",
+    reviewOnly,
   });
   const [pending, setPending] = useState<"reveal" | "rating" | null>(null);
   const question = state.questions[state.index];

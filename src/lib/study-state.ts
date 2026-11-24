@@ -15,6 +15,7 @@ export type FlashcardSessionState = {
   index: number;
   reveal: FlashcardReveal | null;
   error: string;
+  reviewOnly: boolean;
 };
 
 type StudyQuestion = StudyAttempt["questions"][number];
@@ -172,14 +173,17 @@ export function applyFlashcardRating(
     return { ...state, error: result.error };
   }
 
+  const removeKnownCard = state.reviewOnly && result.value === "known";
   return {
     ...state,
-    questions: state.questions.map((question) =>
-      question.id === questionId
-        ? { ...question, rating: result.value }
-        : question,
-    ),
-    index: state.index + 1,
+    questions: removeKnownCard
+      ? state.questions.filter((question) => question.id !== questionId)
+      : state.questions.map((question) =>
+          question.id === questionId
+            ? { ...question, rating: result.value }
+            : question,
+        ),
+    index: removeKnownCard ? state.index : state.index + 1,
     reveal: null,
     error: "",
   };
