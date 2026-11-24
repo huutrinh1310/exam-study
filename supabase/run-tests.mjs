@@ -1,14 +1,13 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { PGlite } from "@electric-sql/pglite";
 
-const migrationUrl = new URL(
-  "./migrations/202611180001_initial.sql",
-  import.meta.url,
-);
+const migrationsUrl = new URL("./migrations/", import.meta.url);
 const testsUrl = new URL("./tests/access.sql", import.meta.url);
-const migration = await readFile(fileURLToPath(migrationUrl), "utf8");
+const migrationNames = (await readdir(fileURLToPath(migrationsUrl)))
+  .filter((name) => name.endsWith(".sql"))
+  .sort();
 const tests = await readFile(fileURLToPath(testsUrl), "utf8");
 
 const db = new PGlite();
@@ -48,29 +47,64 @@ try {
   `);
   console.log("Bootstrap: roles, auth.users, and auth.uid() ready");
 
-  await db.exec(migration);
-  console.log("Migration: supabase/migrations/202611180001_initial.sql applied");
+  for (const migrationName of migrationNames) {
+    try {
+      const migration = await readFile(
+        fileURLToPath(new URL(migrationName, migrationsUrl)),
+        "utf8",
+      );
+      await db.exec(migration);
+      console.log(`Migration: supabase/migrations/${migrationName} applied`);
+    } catch (error) {
+      error.message = `Migration supabase/migrations/${migrationName} failed: ${error.message}`;
+      throw error;
+    }
+  }
 
   const tables = await db.query(`
     select
       relation.relname,
       relation.relrowsecurity as rls_enabled,
       has_table_privilege('anon', relation.oid, 'select') as anon_select,
-      has_table_privilege('authenticated', relation.oid, 'select') as authenticated_select
+      has_table_privilege('anon', relation.oid, 'insert') as anon_insert,
+      has_table_privilege('anon', relation.oid, 'update') as anon_update,
+      has_table_privilege('anon', relation.oid, 'delete') as anon_delete,
+      has_table_privilege('authenticated', relation.oid, 'select') as authenticated_select,
+      has_table_privilege('authenticated', relation.oid, 'insert') as authenticated_insert,
+      has_table_privilege('authenticated', relation.oid, 'update') as authenticated_update,
+      has_table_privilege('authenticated', relation.oid, 'delete') as authenticated_delete
     from pg_catalog.pg_class as relation
     join pg_catalog.pg_namespace as schema on schema.oid = relation.relnamespace
     where schema.nspname = 'public'
       and relation.relkind = 'r'
     order by relation.relname
   `);
-  assert.equal(tables.rows.length, 5, "expected five public tables");
+  assert.equal(tables.rows.length, 6, "expected six public tables");
   for (const table of tables.rows) {
     assert.equal(table.rls_enabled, true, `${table.relname} must enable RLS`);
     assert.equal(table.anon_select, false, `${table.relname} must not be readable by anon`);
+    assert.equal(table.anon_insert, false, `${table.relname} must not be writable by anon`);
+    assert.equal(table.anon_update, false, `${table.relname} must not be updatable by anon`);
+    assert.equal(table.anon_delete, false, `${table.relname} must not be deletable by anon`);
     assert.equal(
       table.authenticated_select,
       table.relname === "quizzes",
       `${table.relname} has unexpected authenticated SELECT access`,
+    );
+    assert.equal(
+      table.authenticated_insert,
+      false,
+      `${table.relname} must not be writable by authenticated`,
+    );
+    assert.equal(
+      table.authenticated_update,
+      false,
+      `${table.relname} must not be updatable by authenticated`,
+    );
+    assert.equal(
+      table.authenticated_delete,
+      false,
+      `${table.relname} must not be deletable by authenticated`,
     );
   }
 
@@ -82,6 +116,10 @@ try {
     "get_attempt",
     "submit_answer",
     "list_my_attempts",
+    "get_flashcard_deck",
+    "get_flashcard_answer",
+    "rate_flashcard",
+    "submit_full_test",
   ];
   const rpcs = await db.query(
     `
@@ -97,7 +135,7 @@ try {
       order by procedure.proname
     `,
   );
-  assert.equal(rpcs.rows.length, rpcNames.length, "all seven RPCs must exist");
+  assert.equal(rpcs.rows.length, rpcNames.length, "all eleven RPCs must exist");
   assert.deepEqual(
     rpcs.rows.map(({ proname }) => proname),
     [...rpcNames].sort(),
@@ -116,6 +154,28 @@ try {
       `${rpc.proname} must be executable by authenticated`,
     );
   }
+
+  const helper = await db.query(`
+    select
+      procedure.proconfig as configuration,
+      has_function_privilege('anon', procedure.oid, 'execute') as anon_execute,
+      has_function_privilege('authenticated', procedure.oid, 'execute') as authenticated_execute
+    from pg_catalog.pg_proc as procedure
+    join pg_catalog.pg_namespace as schema on schema.oid = procedure.pronamespace
+    where schema.nspname = 'private'
+      and procedure.proname = 'score_response'
+  `);
+  assert.equal(helper.rows.length, 1, "private scoring helper must exist");
+  assert.ok(
+    helper.rows[0].configuration?.includes("search_path=pg_catalog, public, auth"),
+    "private scoring helper must have a fixed search_path",
+  );
+  assert.equal(helper.rows[0].anon_execute, false, "anon must not execute the private helper");
+  assert.equal(
+    helper.rows[0].authenticated_execute,
+    false,
+    "authenticated must not execute the private helper",
+  );
   console.log("Catalog checks: RLS, direct read access, and RPC grants passed");
 
   await db.exec(tests);

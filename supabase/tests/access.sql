@@ -56,11 +56,19 @@ declare
   stranger_id constant uuid := '00000000-0000-4000-8000-000000000003';
   quiz_id uuid;
   owner_attempt uuid;
+  drag_attempt uuid;
   member_attempt uuid;
   partial_attempt uuid;
+  full_attempt uuid;
+  unfinished_full_attempt uuid;
+  card_id uuid;
   attempt_data jsonb;
   attempt_questions jsonb;
+  flashcard_deck jsonb;
+  flashcard_answer jsonb;
   result jsonb;
+  full_result jsonb;
+  full_responses jsonb;
   answer_ids uuid[];
   failed boolean;
   write_failed boolean;
@@ -99,6 +107,32 @@ begin
     raise exception 'create_quiz returned no id';
   end if;
 
+  flashcard_deck := public.get_flashcard_deck(quiz_id, null, false, false);
+  if jsonb_array_length(flashcard_deck->'questions') <> 3
+     or flashcard_deck ? 'answer'
+     or flashcard_deck ? 'explanation'
+     or exists (
+       select 1
+       from jsonb_array_elements(flashcard_deck->'questions') as card(question)
+       where card.question ? 'answer' or card.question ? 'explanation'
+     ) then
+    raise exception 'flashcard deck exposed answer data or omitted questions';
+  end if;
+  card_id := (flashcard_deck->'questions'->0->>'id')::uuid;
+  flashcard_answer := public.get_flashcard_answer(card_id);
+  if flashcard_answer->>'question_id' <> card_id::text
+     or flashcard_answer->'answer' <> '["B"]'::jsonb
+     or flashcard_answer->>'explanation' <> 'Second is correct.' then
+    raise exception 'authorized flashcard reveal returned incorrect feedback';
+  end if;
+  if public.rate_flashcard(card_id, 'known') <> 'known' then
+    raise exception 'flashcard rating was not saved';
+  end if;
+  flashcard_deck := public.get_flashcard_deck(quiz_id, null, false, false);
+  if flashcard_deck->'questions'->0->>'rating' <> 'known' then
+    raise exception 'saved flashcard rating was not returned';
+  end if;
+
   select count(*) into visible_count
   from public.quizzes
   where id = quiz_id;
@@ -110,11 +144,53 @@ begin
   if jsonb_array_length(public.list_my_attempts()) <> 1 then
     raise exception 'owner history did not include their own attempt';
   end if;
+  if public.get_attempt(owner_attempt)->>'mode' <> 'practice' then
+    raise exception 'existing attempts did not default to practice mode';
+  end if;
+  drag_attempt := public.start_attempt(quiz_id, null, false, 'drag_drop');
+  if public.get_attempt(drag_attempt)->>'mode' <> 'drag_drop' then
+    raise exception 'drag-and-drop mode was not recorded on the attempt';
+  end if;
 
   perform public.set_quiz_sharing(quiz_id, true);
   perform set_config('request.jwt.claim.sub', member_id::text, true);
   if (public.get_quiz_for_study(quiz_id)->>'is_shared')::boolean is not true then
     raise exception 'shared quiz was not available by UUID';
+  end if;
+  flashcard_deck := public.get_flashcard_deck(quiz_id, null, false, false);
+  if jsonb_array_length(flashcard_deck->'questions') <> 3
+     or exists (
+       select 1
+       from jsonb_array_elements(flashcard_deck->'questions') as card(question)
+       where card.question ? 'answer' or card.question ? 'explanation'
+     ) then
+    raise exception 'shared flashcard deck exposed answer data or omitted questions';
+  end if;
+  if flashcard_deck->'questions'->0->>'rating' is not null then
+    raise exception 'member saw another learner flashcard rating';
+  end if;
+  if public.rate_flashcard(card_id, 'review') <> 'review' then
+    raise exception 'member flashcard rating was not saved';
+  end if;
+  if public.rate_flashcard(card_id, 'known') <> 'known'
+     or public.rate_flashcard(card_id, 'review') <> 'review' then
+    raise exception 'member flashcard rating was not updated';
+  end if;
+  flashcard_deck := public.get_flashcard_deck(quiz_id, null, true, false);
+  if jsonb_array_length(flashcard_deck->'questions') <> 1
+     or flashcard_deck->'questions'->0->>'id' <> card_id::text
+     or flashcard_deck->'questions'->0->>'rating' <> 'review' then
+    raise exception 'review-only flashcard deck did not filter by this member';
+  end if;
+  perform set_config('request.jwt.claim.sub', owner_id::text, true);
+  flashcard_deck := public.get_flashcard_deck(quiz_id, null, false, false);
+  if flashcard_deck->'questions'->0->>'rating' <> 'known' then
+    raise exception 'member rating overwrote the owner rating';
+  end if;
+  perform set_config('request.jwt.claim.sub', member_id::text, true);
+  flashcard_answer := public.get_flashcard_answer(card_id);
+  if flashcard_answer->'answer' <> '["B"]'::jsonb then
+    raise exception 'shared member could not explicitly reveal an authorized card';
   end if;
 
   select count(*) into visible_count
@@ -203,7 +279,163 @@ begin
     raise exception 'authenticated users can directly read answer keys';
   end if;
 
-  member_attempt := public.start_attempt(quiz_id, null, false);
+  member_attempt := public.start_attempt(quiz_id, null, false, 'practice');
+  if jsonb_array_length(public.list_my_attempts()) <> 1 then
+    raise exception 'member history did not include their practice attempt';
+  end if;
+  attempt_data := public.get_attempt(member_attempt);
+  if attempt_data->>'mode' <> 'practice' then
+    raise exception 'practice mode was not recorded on the attempt';
+  end if;
+  attempt_questions := attempt_data->'questions';
+  answer_ids := array(
+    select (q.question->>'id')::uuid
+    from jsonb_array_elements(attempt_questions) with ordinality as q(question, n)
+    order by n
+  );
+  full_attempt := public.start_attempt(quiz_id, null, false, 'full_test');
+  unfinished_full_attempt := public.start_attempt(quiz_id, null, false, 'full_test');
+  attempt_data := public.get_attempt(full_attempt);
+  if attempt_data->>'mode' <> 'full_test'
+     or (attempt_data->>'answered')::integer <> 0
+     or exists (
+       select 1
+       from jsonb_array_elements(attempt_data->'questions') as q(question)
+       where q.question ? 'answer'
+          or q.question->'response' <> 'null'::jsonb
+          or q.question->'feedback' <> 'null'::jsonb
+     ) then
+    raise exception 'full-test draft exposed answer data before submission';
+  end if;
+  if not exists (
+    select 1
+    from jsonb_array_elements(public.list_my_attempts()) as history(item)
+    where history.item->>'id' = unfinished_full_attempt::text
+      and history.item->>'mode' = 'full_test'
+  ) then
+    raise exception 'unfinished full-test attempt was missing from history';
+  end if;
+  attempt_data := public.get_attempt(unfinished_full_attempt);
+  if attempt_data->>'mode' <> 'full_test'
+     or (attempt_data->>'answered')::integer <> 0 then
+    raise exception 'unfinished full-test attempt could not be reopened';
+  end if;
+  full_responses := jsonb_build_array(
+    jsonb_build_object('question_id', answer_ids[1], 'response', '["B"]'::jsonb),
+    jsonb_build_object('question_id', answer_ids[2], 'response', '["A","C"]'::jsonb),
+    jsonb_build_object(
+      'question_id', answer_ids[3],
+      'response',
+      '{"A":true,"B":false}'::jsonb
+    )
+  );
+  failed := false;
+  begin
+    perform public.submit_answer(full_attempt, answer_ids[1], '["B"]'::jsonb);
+  exception when others then
+    failed := true;
+  end;
+  if not failed or (public.get_attempt(full_attempt)->>'answered')::integer <> 0 then
+    raise exception 'single-answer RPC revealed or persisted a full-test response';
+  end if;
+  failed := false;
+  begin
+    perform public.submit_full_test(
+      full_attempt,
+      full_responses - 2
+    );
+  exception when others then
+    failed := true;
+  end;
+  if not failed or (public.get_attempt(full_attempt)->>'answered')::integer <> 0 then
+    raise exception 'incomplete full-test submission persisted responses';
+  end if;
+  failed := false;
+  begin
+    perform public.submit_full_test(
+      full_attempt,
+      jsonb_build_array(
+        full_responses->0,
+        full_responses->0,
+        full_responses->2
+      )
+    );
+  exception when others then
+    failed := true;
+  end;
+  if not failed or (public.get_attempt(full_attempt)->>'answered')::integer <> 0 then
+    raise exception 'duplicate full-test question persisted responses';
+  end if;
+  failed := false;
+  begin
+    perform public.submit_full_test(
+      full_attempt,
+      jsonb_build_array(
+        full_responses->0,
+        full_responses->1,
+        jsonb_build_object(
+          'question_id',
+          '00000000-0000-4000-8000-000000000099',
+          'response',
+          '["A"]'::jsonb
+        )
+      )
+    );
+  exception when others then
+    failed := true;
+  end;
+  if not failed or (public.get_attempt(full_attempt)->>'answered')::integer <> 0 then
+    raise exception 'foreign-question full-test submission persisted responses';
+  end if;
+  failed := false;
+  begin
+    perform public.submit_full_test(
+      full_attempt,
+      jsonb_build_array(
+        full_responses->0,
+        full_responses->1,
+        jsonb_build_object('question_id', answer_ids[3])
+      )
+    );
+  exception when others then
+    failed := true;
+  end;
+  if not failed or (public.get_attempt(full_attempt)->>'answered')::integer <> 0 then
+    raise exception 'malformed full-test submission persisted responses';
+  end if;
+  failed := false;
+  begin
+    perform public.submit_full_test(
+      full_attempt,
+      jsonb_build_array(
+        full_responses->0,
+        full_responses->1,
+        jsonb_build_object('question_id', answer_ids[3], 'response', '{"A":true}'::jsonb)
+      )
+    );
+  exception when others then
+    failed := true;
+  end;
+  if not failed or (public.get_attempt(full_attempt)->>'answered')::integer <> 0 then
+    raise exception 'invalid full-test response persisted partial results';
+  end if;
+  full_result := public.submit_full_test(full_attempt, full_responses);
+  if full_result->>'completed' <> 'true'
+     or jsonb_array_length(full_result->'results') <> 3
+     or full_result->'results'->0->'answer' <> '["B"]'::jsonb
+     or full_result->'results'->1->'answer' <> '["A","C"]'::jsonb
+     or full_result->'results'->2->'answer' <> '{"A":true,"B":false}'::jsonb
+     or full_result->'results'->0->>'explanation' <> 'Second is correct.'
+     or full_result->'results'->1->>'explanation' <> 'First and third are correct.'
+     or full_result->'results'->2->>'explanation' <> 'The first is true and the second is false.'
+     or full_result->'results'->0->>'correct' <> 'true'
+     or full_result->'results'->1->>'correct' <> 'true'
+     or full_result->'results'->2->>'correct' <> 'true'
+     or (public.get_attempt(full_attempt)->>'answered')::integer <> 3
+     or public.get_attempt(full_attempt)->>'completed_at' is null then
+    raise exception 'full-test batch did not score, return feedback, and complete';
+  end if;
+
   attempt_data := public.get_attempt(member_attempt);
   attempt_questions := attempt_data->'questions';
   if jsonb_array_length(attempt_questions) <> 3 then
@@ -315,7 +547,7 @@ begin
     raise exception 'invalid yes/no response was accepted';
   end if;
 
-  if jsonb_array_length(public.list_my_attempts()) <> 2 then
+  if jsonb_array_length(public.list_my_attempts()) <> 4 then
     raise exception 'member history did not contain exactly their own attempts';
   end if;
 
@@ -340,8 +572,20 @@ begin
   if not failed then
     raise exception 'stranger could read another user attempt';
   end if;
-
+  failed := false;
+  begin
+    perform public.submit_full_test(unfinished_full_attempt, full_responses);
+  exception when others then
+    failed := true;
+  end;
+  if not failed then
+    raise exception 'stranger could submit another user full-test attempt';
+  end if;
   perform set_config('request.jwt.claim.sub', member_id::text, true);
+  if (public.get_attempt(unfinished_full_attempt)->>'answered')::integer <> 0 then
+    raise exception 'stranger full-test submission persisted responses';
+  end if;
+
   failed := false;
   begin
     perform public.start_attempt(quiz_id, array['Not a category'], false);
@@ -360,6 +604,16 @@ begin
   end;
   if not failed then
     raise exception 'empty category result was accepted';
+  end if;
+
+  failed := false;
+  begin
+    perform public.start_attempt(quiz_id, null, false, 'invalid');
+  exception when others then
+    failed := true;
+  end;
+  if not failed then
+    raise exception 'unrecognized attempt mode was accepted';
   end if;
 
   failed := false;
@@ -473,9 +727,37 @@ begin
 
   perform set_config('request.jwt.claim.sub', owner_id::text, true);
   perform public.set_quiz_sharing(quiz_id, false);
-  perform set_config('request.jwt.claim.sub', member_id::text, true);
+  perform set_config('request.jwt.claim.sub', stranger_id::text, true);
+  failed := false;
+  begin
+    perform public.get_flashcard_deck(quiz_id, null, false, false);
+  exception when others then
+    failed := true;
+  end;
+  if not failed then
+    raise exception 'stranger could read an unavailable flashcard deck';
+  end if;
+  failed := false;
+  begin
+    perform public.get_flashcard_answer(card_id);
+  exception when others then
+    failed := true;
+  end;
+  if not failed then
+    raise exception 'stranger could reveal an unavailable flashcard answer';
+  end if;
+  failed := false;
+  begin
+    perform public.rate_flashcard(card_id, 'known');
+  exception when others then
+    failed := true;
+  end;
+  if not failed then
+    raise exception 'stranger could rate a card in an unavailable quiz';
+  end if;
 
-  if jsonb_array_length(public.list_my_attempts()) <> 2 then
+  perform set_config('request.jwt.claim.sub', member_id::text, true);
+  if jsonb_array_length(public.list_my_attempts()) <> 4 then
     raise exception 'revoked member lost allowed history metadata';
   end if;
 
@@ -497,6 +779,21 @@ begin
   end;
   if not failed then
     raise exception 'revoked member could submit to an old attempt';
+  end if;
+
+  failed := false;
+  begin
+    perform public.submit_full_test(unfinished_full_attempt, full_responses);
+  exception when others then
+    failed := true;
+  end;
+  if not failed or not exists (
+    select 1
+    from jsonb_array_elements(public.list_my_attempts()) as history(item)
+    where history.item->>'id' = unfinished_full_attempt::text
+      and (history.item->>'answered')::integer = 0
+  ) then
+    raise exception 'revoked member could submit an old full-test attempt';
   end if;
 
   failed := false;
