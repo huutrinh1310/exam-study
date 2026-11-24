@@ -1,8 +1,19 @@
 import type { QuestionAnswer } from "./quiz";
 import type {
+  FlashcardDeck,
+  FlashcardRating,
+  FlashcardReveal,
+  StudyActionResult,
   StudyAttempt,
   SubmissionFeedback,
 } from "./study";
+
+export type FlashcardSessionState = {
+  questions: FlashcardDeck["questions"];
+  index: number;
+  reveal: FlashcardReveal | null;
+  error: string;
+};
 
 type StudyQuestion = StudyAttempt["questions"][number];
 type SingleQuestion = Extract<StudyQuestion, { kind: "single" }>;
@@ -89,5 +100,54 @@ export function applySubmission(
     answered: attempt.answered + 1,
     correct: attempt.correct + Number(feedback.correct),
     questions: attempt.questions.map(updateQuestion),
+  };
+}
+
+export function applyFlashcardReveal(
+  state: FlashcardSessionState,
+  questionId: string,
+  result: StudyActionResult<FlashcardReveal>,
+): FlashcardSessionState {
+  const activeQuestion = state.questions[state.index];
+  if (!activeQuestion || activeQuestion.id !== questionId) {
+    return state;
+  }
+  if (!result.ok) {
+    return { ...state, error: result.error };
+  }
+  if (result.value.question_id !== questionId) {
+    return { ...state, error: "The answer returned for a different question." };
+  }
+
+  return { ...state, reveal: result.value, error: "" };
+}
+
+export function applyFlashcardRating(
+  state: FlashcardSessionState,
+  questionId: string,
+  result: StudyActionResult<FlashcardRating>,
+): FlashcardSessionState {
+  const activeQuestion = state.questions[state.index];
+  if (
+    !activeQuestion ||
+    activeQuestion.id !== questionId ||
+    state.reveal?.question_id !== questionId
+  ) {
+    return state;
+  }
+  if (!result.ok) {
+    return { ...state, error: result.error };
+  }
+
+  return {
+    ...state,
+    questions: state.questions.map((question) =>
+      question.id === questionId
+        ? { ...question, rating: result.value }
+        : question,
+    ),
+    index: state.index + 1,
+    reveal: null,
+    error: "",
   };
 }

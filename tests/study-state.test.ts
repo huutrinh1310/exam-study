@@ -1,12 +1,25 @@
 import { describe, expect, it } from "vitest";
 import type { QuestionAnswer } from "../src/lib/quiz";
-import type { StudyAttempt } from "../src/lib/study";
-import { applySubmission, canSubmitAnswer } from "../src/lib/study-state";
+import type {
+  FlashcardDeck,
+  FlashcardReveal,
+  FlashcardRating,
+  StudyActionResult,
+  StudyAttempt,
+} from "../src/lib/study";
+import {
+  applyFlashcardRating,
+  applyFlashcardReveal,
+  applySubmission,
+  canSubmitAnswer,
+  type FlashcardSessionState,
+} from "../src/lib/study-state";
 
 type Assert<T extends true> = T;
 type StudyAttemptModeIsRequired = Assert<
-  {} extends Pick<StudyAttempt, "mode"> ? false : true
+  Record<never, never> extends Pick<StudyAttempt, "mode"> ? false : true
 >;
+void (true as StudyAttemptModeIsRequired);
 
 const questionIds = [
   "00000000-0000-4000-8000-000000000011",
@@ -65,6 +78,30 @@ function attemptFixture(): StudyAttempt {
   };
 }
 
+const flashcardQuestions: FlashcardDeck["questions"] = questionIds.map(
+  (id, position) => ({
+    id,
+    position,
+    category: "Networks",
+    prompt: `Question ${position + 1}`,
+    choices: [
+      { label: "A", text: "First choice" },
+      { label: "B", text: "Second choice" },
+    ],
+    kind: "single",
+    rating: null,
+  }),
+);
+
+function flashcardState(): FlashcardSessionState {
+  return {
+    questions: flashcardQuestions,
+    index: 0,
+    reveal: null,
+    error: "",
+  };
+}
+
 describe("study state transitions", () => {
   it("requires an explicit true or false for every yes/no statement", () => {
     expect(
@@ -111,5 +148,105 @@ describe("study state transitions", () => {
     expect(repeated).toBe(submitted);
     expect(repeated.answered).toBe(1);
     expect(repeated.correct).toBe(1);
+  });
+});
+
+describe("flashcard state transitions", () => {
+  it("starts with the active card unrevealed", () => {
+    const state = flashcardState();
+
+    expect(state.index).toBe(0);
+    expect(state.reveal).toBeNull();
+    expect(state.questions[0].rating).toBeNull();
+  });
+
+  it("reveals answer and explanation only for the active card", () => {
+    const reveal: FlashcardReveal = {
+      question_id: questionIds[0],
+      answer: ["B"],
+      explanation: "The second choice is correct.",
+    };
+    const result: StudyActionResult<FlashcardReveal> = {
+      ok: true,
+      value: reveal,
+    };
+
+    const revealed = applyFlashcardReveal(
+      flashcardState(),
+      questionIds[0],
+      result,
+    );
+
+    expect(revealed.reveal).toEqual(reveal);
+    expect(revealed.index).toBe(0);
+    expect(revealed.questions[0]).not.toHaveProperty("answer");
+    expect(revealed.questions[1]).not.toHaveProperty("answer");
+    expect(revealed.questions[1]).not.toHaveProperty("explanation");
+  });
+
+  it.each(["known", "review"] as const)(
+    "records a successful %s rating and advances once",
+    (rating) => {
+      const state = {
+        ...flashcardState(),
+        reveal: {
+          question_id: questionIds[0],
+          answer: ["B"] as QuestionAnswer,
+          explanation: "The second choice is correct.",
+        },
+      };
+      const result: StudyActionResult<FlashcardRating> = {
+        ok: true,
+        value: rating,
+      };
+
+      const rated = applyFlashcardRating(state, questionIds[0], result);
+      const repeated = applyFlashcardRating(rated, questionIds[0], result);
+
+      expect(rated.index).toBe(1);
+      expect(rated.questions[0].rating).toBe(rating);
+      expect(rated.reveal).toBeNull();
+      expect(repeated).toBe(rated);
+    },
+  );
+
+  it("preserves the active card, reveal, and saved rating on rating failure", () => {
+    const reveal: FlashcardReveal = {
+      question_id: questionIds[0],
+      answer: ["B"],
+      explanation: "The second choice is correct.",
+    };
+    const state = {
+      ...flashcardState(),
+      questions: flashcardQuestions.map((question, index) =>
+        index === 0 ? { ...question, rating: "review" as const } : question,
+      ),
+      reveal,
+    };
+
+    const failed = applyFlashcardRating(state, questionIds[0], {
+      ok: false,
+      error: "Could not save your rating.",
+    });
+
+    expect(failed.index).toBe(0);
+    expect(failed.reveal).toEqual(reveal);
+    expect(failed.questions[0].rating).toBe("review");
+    expect(failed.error).toBe("Could not save your rating.");
+  });
+
+  it("does not apply a stale rating result to another active card", () => {
+    const state = { ...flashcardState(), index: 1 };
+    const staleResult: StudyActionResult<FlashcardRating> = {
+      ok: true,
+      value: "known",
+    };
+
+    const unchanged = applyFlashcardRating(state, questionIds[0], staleResult);
+
+    expect(unchanged).toBe(state);
+    expect(unchanged.index).toBe(1);
+    expect(unchanged.questions[0].rating).toBeNull();
+    expect(unchanged.questions[1].rating).toBeNull();
   });
 });

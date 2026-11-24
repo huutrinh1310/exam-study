@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { beginAttempt, toggleSharing } from "@/app/actions";
 import type { ActionState } from "@/lib/action-types";
 import Icon from "@/components/icon";
@@ -18,42 +19,119 @@ function StartAttemptForm({
     beginAttempt,
     {},
   );
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+  const [shuffle, setShuffle] = useState(false);
+  const flashcardParams = new URLSearchParams();
+  for (const category of selectedCategories) {
+    flashcardParams.append("categories", category);
+  }
+  flashcardParams.set("shuffle", String(shuffle));
 
   return (
-    <section className="card quiz-option-card">
-      <span className="eyebrow">Make it yours</span>
-      <h2>Set up a practice round</h2>
-      {questionCount > 0 ? (
-        <form action={formAction} className="form-stack">
-          <input type="hidden" name="quizId" value={quizId} />
-          {categories.length ? (
-            <fieldset className="category-fieldset">
-              <legend>Choose topics <span className="muted">(optional)</span></legend>
-              <p className="form-note">Leave all topics unchecked to practice the full set.</p>
-              <div className="category-list">
-                {categories.map((category) => (
-                  <label className="category-item" key={category}>
-                    <input type="checkbox" name="categories" value={category} />
-                    <span>{category}</span>
-                  </label>
-                ))}
-              </div>
-            </fieldset>
-          ) : null}
-          <label className="check-row">
-            <input type="checkbox" name="shuffle" />
-            <span>Shuffle the questions in this attempt</span>
-          </label>
-          {state.error ? <p className="error-status" role="alert">{state.error}</p> : null}
-          <button type="submit" className="button" disabled={pending}>
-            {pending ? "Starting your round…" : "Start studying"}
+    <form action={formAction} className="study-mode-grid">
+      <input type="hidden" name="quizId" value={quizId} />
+      <section className="card quiz-option-card mode-option-card">
+        <span className="eyebrow">Instant feedback</span>
+        <h2>Practice</h2>
+        <p>Answer one question at a time and see the answer and explanation after each response.</p>
+        {questionCount > 0 ? (
+          <div className="form-stack">
+            {categories.length ? (
+              <fieldset className="category-fieldset">
+                <legend>Choose topics <span className="muted">(optional)</span></legend>
+                <p className="form-note">Leave all topics unchecked to study the full set.</p>
+                <div className="category-list">
+                  {categories.map((category) => (
+                    <label className="category-item" key={category}>
+                      <input
+                        type="checkbox"
+                        name="categories"
+                        value={category}
+                        checked={selectedCategories.includes(category)}
+                        onChange={(event) => {
+                          setSelectedCategories((current) =>
+                            event.target.checked
+                              ? [...current, category]
+                              : current.filter((value) => value !== category),
+                          );
+                        }}
+                      />
+                      <span>{category}</span>
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+            ) : null}
+            <label className="check-row">
+              <input
+                type="checkbox"
+                name="shuffle"
+                checked={shuffle}
+                onChange={(event) => setShuffle(event.target.checked)}
+              />
+              <span>Shuffle the questions</span>
+            </label>
+            {state.error ? <p className="error-status" role="alert">{state.error}</p> : null}
+            <button type="submit" name="mode" value="practice" className="button" disabled={pending}>
+              {pending ? "Starting your round…" : "Start studying"}
+              <Icon name="arrow" />
+            </button>
+          </div>
+        ) : (
+          <p className="warning-status">This quiz currently has no questions to practice.</p>
+        )}
+      </section>
+
+      <section className="card quiz-option-card mode-option-card">
+        <span className="eyebrow">Reveal when ready</span>
+        <h2>Flashcards</h2>
+        <p>
+          Answers and explanations appear only when you reveal them. Your
+          “Know it” or “Review again” rating is saved to your account.
+        </p>
+        {questionCount > 0 ? (
+          <Link className="button secondary mode-option-action" href={`/flashcards/${quizId}?${flashcardParams.toString()}`}>
+            Study flashcards <Icon name="arrow" />
+          </Link>
+        ) : (
+          <p className="warning-status">This quiz currently has no flashcards to study.</p>
+        )}
+      </section>
+
+      <section className="card quiz-option-card mode-option-card">
+        <span className="eyebrow">One final review</span>
+        <h2>Full test</h2>
+        <p>
+          Work through every selected question before answers and explanations
+          are shown. Unfinished selections are saved only in this browser.
+        </p>
+        {questionCount > 0 ? (
+          <button type="submit" name="mode" value="full_test" className="button" disabled={pending}>
+            {pending ? "Starting your test…" : "Start full test"}
             <Icon name="arrow" />
           </button>
-        </form>
-      ) : (
-        <p className="warning-status">This quiz currently has no questions to practice.</p>
-      )}
-    </section>
+        ) : (
+          <p className="warning-status">This quiz currently has no questions for a test.</p>
+        )}
+      </section>
+
+      <section className="card quiz-option-card mode-option-card">
+        <span className="eyebrow">Hands-on practice</span>
+        <h2>Drag &amp; drop</h2>
+        <p>
+          Place choices into the answer area, or use the keyboard-friendly
+          controls. Answers and explanations appear after each response.
+        </p>
+        {questionCount > 0 ? (
+          <button type="submit" name="mode" value="drag_drop" className="button" disabled={pending}>
+            {pending ? "Starting your session…" : "Start drag & drop"}
+            <Icon name="arrow" />
+          </button>
+        ) : (
+          <p className="warning-status">This quiz currently has no questions for drag &amp; drop.</p>
+        )}
+      </section>
+    </form>
   );
 }
 
@@ -157,7 +235,7 @@ export default function QuizActions({
   initiallyShared: boolean;
 }) {
   return (
-    <div className="quiz-detail-grid">
+    <div className="quiz-detail-grid quiz-overview-grid">
       <StartAttemptForm
         quizId={quizId}
         categories={categories}
