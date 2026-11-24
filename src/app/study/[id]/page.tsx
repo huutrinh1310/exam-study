@@ -27,7 +27,11 @@ export default async function StudyPage({ params }: StudyPageProps) {
 
   return (
     <WorkspaceShell email={account.user.email}>
-      <StudySession key={attempt.id} initialAttempt={attempt} />
+      <StudySession
+        key={attempt.id}
+        initialAttempt={attempt}
+        userId={account.user.id}
+      />
     </WorkspaceShell>
   );
 }

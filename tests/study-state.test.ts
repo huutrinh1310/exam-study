@@ -11,9 +11,11 @@ import {
   applyFlashcardRating,
   applyFlashcardReveal,
   applySubmission,
+  buildFullTestResponses,
   canSubmitAnswer,
   type FlashcardSessionState,
 } from "../src/lib/study-state";
+import type { DraftAnswer } from "../src/lib/test-draft";
 
 type Assert<T extends true> = T;
 type StudyAttemptModeIsRequired = Assert<
@@ -148,6 +150,65 @@ describe("study state transitions", () => {
     expect(repeated).toBe(submitted);
     expect(repeated.answered).toBe(1);
     expect(repeated.correct).toBe(1);
+  });
+
+  it.each([
+    ["missing question", {}],
+    ["empty single choice", { [questionIds[0]]: [], [questionIds[1]]: ["A", "B"] }],
+    ["empty multiple choice", { [questionIds[0]]: ["A"], [questionIds[1]]: [] }],
+  ])("does not build full-test responses for a %s", (_description, drafts) => {
+    const original = attemptFixture();
+    const attempt: StudyAttempt = {
+      ...original,
+      mode: "full_test",
+      questions: original.questions.map((question, index) =>
+        index === 1 ? { ...question, kind: "multiple" as const } : question,
+      ) as StudyAttempt["questions"],
+    };
+
+    expect(
+      buildFullTestResponses(attempt, drafts as Record<string, DraftAnswer>),
+    ).toBeNull();
+  });
+
+  it("does not build full-test responses for a partially answered yes/no question", () => {
+    const original = attemptFixture();
+    const attempt: StudyAttempt = {
+      ...original,
+      mode: "full_test",
+      questions: original.questions.map((question, index) =>
+        index === 0 ? { ...question, kind: "yes_no" as const } : question,
+      ) as StudyAttempt["questions"],
+    };
+
+    expect(
+      buildFullTestResponses(attempt, {
+        [questionIds[0]]: { A: true },
+        [questionIds[1]]: ["A"],
+      }),
+    ).toBeNull();
+  });
+
+  it("builds complete full-test responses in attempt question order", () => {
+    const original = attemptFixture();
+    const attempt: StudyAttempt = {
+      ...original,
+      mode: "full_test",
+      questions: original.questions.map((question, index) =>
+        index === 0
+          ? { ...question, kind: "yes_no" as const }
+          : { ...question, kind: "multiple" as const },
+      ) as StudyAttempt["questions"],
+    };
+    const drafts: Record<string, DraftAnswer> = {
+      [questionIds[1]]: ["B", "A"],
+      [questionIds[0]]: { B: false, A: true },
+    };
+
+    expect(buildFullTestResponses(attempt, drafts)).toEqual([
+      { question_id: questionIds[0], response: { B: false, A: true } },
+      { question_id: questionIds[1], response: ["B", "A"] },
+    ]);
   });
 });
 

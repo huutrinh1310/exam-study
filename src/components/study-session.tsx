@@ -2,12 +2,22 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
-import { answerQuestion } from "@/app/actions";
+import { useEffect, useRef, useState, useTransition } from "react";
+import { answerQuestion, submitFullTest } from "@/app/actions";
 import Icon from "@/components/icon";
 import type { QuestionAnswer } from "@/lib/quiz";
 import type { StudyAttempt } from "@/lib/study";
-import { applySubmission, canSubmitAnswer } from "@/lib/study-state";
+import {
+  applySubmission,
+  buildFullTestResponses,
+  canSubmitAnswer,
+} from "@/lib/study-state";
+import {
+  clearTestDraft,
+  loadTestDraft,
+  saveTestDraft,
+  type DraftAnswer,
+} from "@/lib/test-draft";
 
 function firstReviewIndex(attempt: StudyAttempt) {
   if (attempt.answered === attempt.total) return 0;
@@ -92,11 +102,14 @@ function Feedback({
 
 export default function StudySession({
   initialAttempt,
+  userId,
 }: {
   initialAttempt: StudyAttempt;
+  userId: string;
 }) {
   const router = useRouter();
   const [localAttempt, setLocalAttempt] = useState(initialAttempt);
+  const isFullTest = initialAttempt.mode === "full_test";
   const attempt =
     initialAttempt.id === localAttempt.id &&
     (initialAttempt.answered > localAttempt.answered ||
@@ -106,20 +119,114 @@ export default function StudySession({
       ? initialAttempt
       : localAttempt;
   const [activeIndex, setActiveIndex] = useState(() => firstReviewIndex(initialAttempt));
-  const [drafts, setDrafts] = useState<Record<string, QuestionAnswer>>({});
+  const [drafts, setDrafts] = useState<Record<string, DraftAnswer>>({});
+  const [draftLoaded, setDraftLoaded] = useState(
+    !isFullTest || initialAttempt.completed_at !== null,
+  );
+  const [fullTestSubmitted, setFullTestSubmitted] = useState(false);
+  const fullTestSubmitInFlight = useRef(false);
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState("");
 
+  useEffect(() => {
+    if (!isFullTest || attempt.completed_at !== null) return;
+    let active = true;
+    queueMicrotask(() => {
+      if (!active) return;
+      try {
+        const result = loadTestDraft(
+          window.localStorage,
+          userId,
+          attempt.id,
+          attempt.questions,
+        );
+        if (result.ok) setDrafts(result.value);
+        else setError(result.error);
+      } catch {
+        setError("Browser storage is unavailable; your saved draft could not be loaded.");
+      } finally {
+        if (active) setDraftLoaded(true);
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, [attempt.completed_at, attempt.id, attempt.questions, isFullTest, userId]);
+
   const question = attempt.questions[activeIndex];
   const draft = question
-    ? drafts[question.id] ?? question.response
+    ? isFullTest && attempt.completed_at !== null
+      ? question.response
+      : drafts[question.id] ?? question.response
     : null;
   const isComplete = attempt.answered === attempt.total;
 
-  function setDraft(next: QuestionAnswer) {
-    if (!question || question.response !== null || pending) return;
-    setDrafts((current) => ({ ...current, [question.id]: next }));
+  function setDraft(next: DraftAnswer) {
+    if (
+      !question ||
+      question.response !== null ||
+      pending ||
+      fullTestSubmitted
+    ) {
+      return;
+    }
+    const updatedDrafts = { ...drafts, [question.id]: next };
+    setDrafts(updatedDrafts);
+    if (isFullTest) {
+      try {
+        const result = saveTestDraft(
+          window.localStorage,
+          userId,
+          attempt.id,
+          attempt.questions,
+          updatedDrafts,
+        );
+        setError(result.ok ? "" : result.error);
+      } catch {
+        setError("Browser storage is unavailable; your draft could not be saved.");
+      }
+    } else {
+      setError("");
+    }
+  }
+
+  function submitFullTestAttempt() {
+    const responses = buildFullTestResponses(attempt, drafts);
+    if (
+      !responses ||
+      pending ||
+      fullTestSubmitted ||
+      fullTestSubmitInFlight.current ||
+      !draftLoaded
+    ) {
+      return;
+    }
+    fullTestSubmitInFlight.current = true;
     setError("");
+    startTransition(async () => {
+      let result: Awaited<ReturnType<typeof submitFullTest>>;
+      try {
+        result = await submitFullTest(attempt.id, responses);
+      } catch {
+        fullTestSubmitInFlight.current = false;
+        setError("We couldn’t submit the full test. Check your connection and try again.");
+        return;
+      }
+      if (!result.ok) {
+        fullTestSubmitInFlight.current = false;
+        setError(result.error);
+        return;
+      }
+
+      setFullTestSubmitted(true);
+      try {
+        const cleared = clearTestDraft(window.localStorage, userId, attempt.id);
+        if (!cleared.ok) setError(cleared.error);
+      } catch {
+        setError("Your test was submitted, but its local draft could not be cleared.");
+      }
+      router.refresh();
+    });
   }
 
   function submitAnswer() {
@@ -131,7 +238,7 @@ export default function StudySession({
       return;
     }
 
-    const submittedResponse = draft;
+    const submittedResponse = draft as QuestionAnswer;
     if (!submittedResponse) return;
     setError("");
     startTransition(async () => {
@@ -175,6 +282,15 @@ export default function StudySession({
 
   const isSubmitted = question.response !== null;
   const canSubmit = canSubmitAnswer(question, draft);
+  const fullTestResponses = isFullTest
+    ? buildFullTestResponses(attempt, drafts)
+    : null;
+  const fullTestAnswered =
+    attempt.completed_at !== null
+      ? attempt.answered
+      : attempt.questions.filter((item) =>
+          canSubmitAnswer(item, drafts[item.id] ?? null),
+        ).length;
 
   return (
     <>
@@ -202,7 +318,11 @@ export default function StudySession({
             <div>
               <Link className="muted" href={`/quiz/${attempt.quiz_id}`}>← Quiz overview</Link>
               <h1>{attempt.title}</h1>
-              <p>{attempt.answered} of {attempt.total} answers submitted</p>
+              <p>
+                {isFullTest
+                  ? `${fullTestAnswered} of ${attempt.total} questions answered`
+                  : `${attempt.answered} of ${attempt.total} answers submitted`}
+              </p>
             </div>
             <span className="badge">{question.kind === "yes_no" ? "Yes / no" : question.kind === "multiple" ? "Choose all that apply" : "Choose one"}</span>
           </div>
@@ -233,9 +353,9 @@ export default function StudySession({
                               name={`yes-no-${question.id}-${choice.label}`}
                               value={String(value)}
                               checked={current === value}
-                              disabled={isSubmitted || pending}
+                              disabled={isSubmitted || pending || fullTestSubmitted || (isFullTest && !draftLoaded)}
                               onChange={() => {
-                                const next =
+                                const next: Partial<Record<typeof choice.label, boolean>> =
                                   draft && !Array.isArray(draft)
                                     ? { ...draft }
                                     : {};
@@ -268,7 +388,7 @@ export default function StudySession({
                       value={choice.label}
                       label={choice.text}
                       checked={selected}
-                      disabled={isSubmitted || pending}
+                      disabled={isSubmitted || pending || fullTestSubmitted || (isFullTest && !draftLoaded)}
                       onChange={() => {
                         if (question.kind === "single") {
                           setDraft([choice.label]);
@@ -288,7 +408,9 @@ export default function StudySession({
             )}
 
             {error ? <p className="error-status" role="alert">{error}</p> : null}
-            {isSubmitted ? <Feedback question={question} /> : null}
+            {isSubmitted && (!isFullTest || isComplete) ? (
+              <Feedback question={question} />
+            ) : null}
 
             <div className="question-actions">
               <button
@@ -300,7 +422,23 @@ export default function StudySession({
                 <Icon name="back" /> Previous
               </button>
               <div className="question-actions-group">
-                {!isSubmitted ? (
+                {isFullTest ? (
+                  !isComplete ? (
+                    <button
+                      type="button"
+                      className="button"
+                      disabled={
+                        pending ||
+                        fullTestSubmitted ||
+                        !draftLoaded ||
+                        fullTestResponses === null
+                      }
+                      onClick={submitFullTestAttempt}
+                    >
+                      {pending ? "Submitting full test…" : "Submit full test"}
+                    </button>
+                  ) : null
+                ) : !isSubmitted ? (
                   <button
                     type="button"
                     className="button"
@@ -330,37 +468,39 @@ export default function StudySession({
         <aside className="card study-aside" aria-label="Study progress">
           <h2>Round progress</h2>
           <div className="study-counts">
-            <div className="study-count"><strong>{attempt.answered}</strong><span>Submitted</span></div>
-            <div className="study-count"><strong>{attempt.total - attempt.answered}</strong><span>Remaining</span></div>
-            <div className="study-count"><strong>{attempt.correct}</strong><span>Correct</span></div>
+            <div className="study-count"><strong>{isFullTest ? fullTestAnswered : attempt.answered}</strong><span>{isFullTest ? "Answered" : "Submitted"}</span></div>
+            <div className="study-count"><strong>{attempt.total - (isFullTest ? fullTestAnswered : attempt.answered)}</strong><span>Remaining</span></div>
+            {!isFullTest || isComplete ? <div className="study-count"><strong>{attempt.correct}</strong><span>Correct</span></div> : null}
             <div className="study-count"><strong>{attempt.total}</strong><span>Total</span></div>
           </div>
           <div
             className="progress-track"
             role="progressbar"
-            aria-label={`${attempt.answered} of ${attempt.total} submitted`}
+            aria-label={`${isFullTest ? fullTestAnswered : attempt.answered} of ${attempt.total} ${isFullTest ? "answered" : "submitted"}`}
             aria-valuemin={0}
             aria-valuemax={attempt.total}
-            aria-valuenow={attempt.answered}
+            aria-valuenow={isFullTest ? fullTestAnswered : attempt.answered}
           >
-            <span style={{ width: `${attempt.total ? (attempt.answered / attempt.total) * 100 : 0}%` }} />
+            <span style={{ width: `${attempt.total ? ((isFullTest ? fullTestAnswered : attempt.answered) / attempt.total) * 100 : 0}%` }} />
           </div>
           <h2 style={{ marginTop: 19 }}>Jump to question</h2>
           <div className="navigator-grid">
             {attempt.questions.map((item, index) => {
-              const status = item.feedback
+              const showFeedback = !isFullTest || isComplete;
+              const status = item.feedback && showFeedback
                 ? item.feedback.correct
                   ? "correct"
                   : "incorrect"
-                : item.response
+                : item.response || drafts[item.id]
                   ? "answered"
                   : "";
+              const hasAnswer = item.response !== null || drafts[item.id] !== undefined;
               return (
                 <button
                   key={item.id}
                   type="button"
                   className={`${status}${index === activeIndex ? " current" : ""}`}
-                  aria-label={`Question ${index + 1}${item.response ? ", submitted" : ", not submitted"}${index === activeIndex ? ", current" : ""}`}
+                  aria-label={`Question ${index + 1}${hasAnswer ? ", answered" : ", not answered"}${index === activeIndex ? ", current" : ""}`}
                   aria-current={index === activeIndex ? "step" : undefined}
                   disabled={pending}
                   onClick={() => {
@@ -374,7 +514,9 @@ export default function StudySession({
             })}
           </div>
           <p className="study-draft-note">
-            Unsubmitted choices aren’t saved if you leave or refresh. Submit an answer to keep it for your next study session.
+            {isFullTest
+              ? "Your unsubmitted answers are saved only in this browser and will be graded together when you submit the full test."
+              : "Unsubmitted choices aren’t saved if you leave or refresh. Submit an answer to keep it for your next study session."}
           </p>
         </aside>
       </div>

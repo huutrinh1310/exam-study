@@ -3,10 +3,12 @@ import type {
   FlashcardDeck,
   FlashcardRating,
   FlashcardReveal,
+  FullTestResponse,
   StudyActionResult,
   StudyAttempt,
   SubmissionFeedback,
 } from "./study";
+import type { DraftAnswer } from "./test-draft";
 
 export type FlashcardSessionState = {
   questions: FlashcardDeck["questions"];
@@ -22,7 +24,7 @@ type YesNoQuestion = Extract<StudyQuestion, { kind: "yes_no" }>;
 
 export function canSubmitAnswer(
   question: StudyQuestion,
-  answer: QuestionAnswer | null,
+  answer: DraftAnswer | null,
 ): boolean {
   if (answer === null) {
     return false;
@@ -55,6 +57,35 @@ export function canSubmitAnswer(
     new Set(answer).size === answer.length &&
     answer.every((label) => labels.includes(label))
   );
+}
+
+export function buildFullTestResponses(
+  attempt: StudyAttempt,
+  drafts: Record<string, DraftAnswer>,
+): FullTestResponse[] | null {
+  if (
+    attempt.mode !== "full_test" ||
+    attempt.questions.length === 0 ||
+    Object.keys(drafts).some(
+      (questionId) =>
+        !attempt.questions.some((question) => question.id === questionId),
+    )
+  ) {
+    return null;
+  }
+
+  const responses: FullTestResponse[] = [];
+  for (const question of attempt.questions) {
+    const draft = drafts[question.id];
+    if (question.response !== null || !canSubmitAnswer(question, draft ?? null)) {
+      return null;
+    }
+    responses.push({
+      question_id: question.id,
+      response: draft as QuestionAnswer,
+    });
+  }
+  return responses;
 }
 
 export function applySubmission(
