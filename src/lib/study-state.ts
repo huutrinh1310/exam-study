@@ -62,8 +62,10 @@ export function canSubmitAnswer(
 export function buildFullTestResponses(
   attempt: StudyAttempt,
   drafts: Record<string, DraftAnswer>,
+  draftPersisted: boolean,
 ): FullTestResponse[] | null {
   if (
+    !draftPersisted ||
     attempt.mode !== "full_test" ||
     attempt.questions.length === 0 ||
     Object.keys(drafts).some(

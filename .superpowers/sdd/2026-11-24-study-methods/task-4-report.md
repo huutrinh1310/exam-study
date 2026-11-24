@@ -30,3 +30,14 @@ Commit subject: `Add full-test mode and draft recovery` (short SHA is in the com
 ## Concerns
 
 No known concerns. If browser storage is unavailable or invalid, the user receives an explicit error; no draft is treated as submitted.
+
+## Round 1: persistence failure blocks submission
+
+The review finding was that complete in-memory drafts could still reach `submitFullTest` after a storage write failed. The UI now tracks whether the latest full-test draft state is persisted; failed reads/writes mark it unpersisted, and the submit handler plus complete-response gate both block submission until a load or save succeeds. A successful subsequent save restores the gate.
+
+### TDD and verification evidence
+
+- RED: Added `blocks full-test submission when the latest draft was not persisted`; `npm.cmd test -- tests/study-state.test.ts` failed as expected because complete responses were still built when `draftPersisted` was false.
+- GREEN: `npm.cmd test -- tests/test-draft.test.ts tests/study-state.test.ts` — 2 test files passed, 27 tests passed.
+- `npm.cmd run typecheck` — passed (`tsc --noEmit`, exit code 0).
+- `npm.cmd run lint` — passed (`eslint .`, exit code 0).

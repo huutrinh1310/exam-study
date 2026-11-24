@@ -167,7 +167,11 @@ describe("study state transitions", () => {
     };
 
     expect(
-      buildFullTestResponses(attempt, drafts as Record<string, DraftAnswer>),
+      buildFullTestResponses(
+        attempt,
+        drafts as Record<string, DraftAnswer>,
+        true,
+      ),
     ).toBeNull();
   });
 
@@ -185,7 +189,7 @@ describe("study state transitions", () => {
       buildFullTestResponses(attempt, {
         [questionIds[0]]: { A: true },
         [questionIds[1]]: ["A"],
-      }),
+      }, true),
     ).toBeNull();
   });
 
@@ -205,10 +209,24 @@ describe("study state transitions", () => {
       [questionIds[0]]: { B: false, A: true },
     };
 
-    expect(buildFullTestResponses(attempt, drafts)).toEqual([
+    expect(buildFullTestResponses(attempt, drafts, true)).toEqual([
       { question_id: questionIds[0], response: { B: false, A: true } },
       { question_id: questionIds[1], response: ["B", "A"] },
     ]);
+  });
+
+  it("blocks full-test submission when the latest draft was not persisted", () => {
+    const original = attemptFixture();
+    const attempt: StudyAttempt = {
+      ...original,
+      mode: "full_test",
+    };
+    const drafts: Record<string, DraftAnswer> = {
+      [questionIds[0]]: ["A"],
+      [questionIds[1]]: ["B"],
+    };
+
+    expect(buildFullTestResponses(attempt, drafts, false)).toBeNull();
   });
 });
 

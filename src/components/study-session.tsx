@@ -123,6 +123,12 @@ export default function StudySession({
   const [draftLoaded, setDraftLoaded] = useState(
     !isFullTest || initialAttempt.completed_at !== null,
   );
+  const [draftPersisted, setDraftPersisted] = useState(
+    !isFullTest || initialAttempt.completed_at !== null,
+  );
+  const draftPersistedRef = useRef(
+    !isFullTest || initialAttempt.completed_at !== null,
+  );
   const [fullTestSubmitted, setFullTestSubmitted] = useState(false);
   const fullTestSubmitInFlight = useRef(false);
   const [pending, startTransition] = useTransition();
@@ -140,9 +146,18 @@ export default function StudySession({
           attempt.id,
           attempt.questions,
         );
-        if (result.ok) setDrafts(result.value);
-        else setError(result.error);
+        if (result.ok) {
+          setDrafts(result.value);
+          draftPersistedRef.current = true;
+          setDraftPersisted(true);
+        } else {
+          draftPersistedRef.current = false;
+          setDraftPersisted(false);
+          setError(result.error);
+        }
       } catch {
+        draftPersistedRef.current = false;
+        setDraftPersisted(false);
         setError("Browser storage is unavailable; your saved draft could not be loaded.");
       } finally {
         if (active) setDraftLoaded(true);
@@ -181,8 +196,12 @@ export default function StudySession({
           attempt.questions,
           updatedDrafts,
         );
+        draftPersistedRef.current = result.ok;
+        setDraftPersisted(result.ok);
         setError(result.ok ? "" : result.error);
       } catch {
+        draftPersistedRef.current = false;
+        setDraftPersisted(false);
         setError("Browser storage is unavailable; your draft could not be saved.");
       }
     } else {
@@ -191,7 +210,11 @@ export default function StudySession({
   }
 
   function submitFullTestAttempt() {
-    const responses = buildFullTestResponses(attempt, drafts);
+    const responses = buildFullTestResponses(
+      attempt,
+      drafts,
+      draftPersistedRef.current,
+    );
     if (
       !responses ||
       pending ||
@@ -283,7 +306,7 @@ export default function StudySession({
   const isSubmitted = question.response !== null;
   const canSubmit = canSubmitAnswer(question, draft);
   const fullTestResponses = isFullTest
-    ? buildFullTestResponses(attempt, drafts)
+    ? buildFullTestResponses(attempt, drafts, draftPersisted)
     : null;
   const fullTestAnswered =
     attempt.completed_at !== null
