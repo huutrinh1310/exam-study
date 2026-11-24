@@ -44,6 +44,13 @@ describe("drag/drop response mapping", () => {
     expect(dropped.ok && canSubmitAnswer(single, dropped.response)).toBe(true);
   });
 
+  it("rejects a multi-label current answer for a single-choice question", () => {
+    expect(applyChoiceDrop(single, ["A", "B"], "A")).toEqual({
+      ok: false,
+      error: "The current answer must contain exactly one choice label.",
+    });
+  });
+
   it("adds and removes distinct multiple-choice labels", () => {
     expect(applyChoiceDrop(multiple, null, "A")).toEqual({ ok: true, response: ["A"] });
     expect(applyChoiceDrop(multiple, ["A"], "B")).toEqual({ ok: true, response: ["A", "B"] });

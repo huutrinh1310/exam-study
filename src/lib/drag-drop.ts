@@ -30,6 +30,10 @@ export function applyChoiceDrop(
   }
 
   if (Array.isArray(current)) {
+    if (question.kind === "single" && current.length !== 1) {
+      return invalid("The current answer must contain exactly one choice label.");
+    }
+
     if (
       new Set(current).size !== current.length ||
       current.some((item) => !available.includes(item as (typeof available)[number]))

@@ -373,6 +373,7 @@ button:disabled, .button[aria-disabled="true"] { opacity: .58; cursor: not-allow
 .drag-drop-answer { display: grid; gap: 12px; min-width: 0; }
 .drag-choice-tokens, .drag-token-row { display: flex; flex-wrap: wrap; gap: 8px; }
 .drag-choice-token { display: flex; min-width: 0; min-height: 48px; align-items: center; gap: 9px; padding: 9px 12px; border: 1px solid var(--line); border-radius: 12px; background: white; color: var(--ink-soft); text-align: left; cursor: grab; }
+.drag-choice-token > span:last-child { min-width: 0; overflow-wrap: anywhere; }
 .drag-choice-token.is-selected { border-color: #8fc1a8; background: #eff8f2; color: var(--ink); }
 .drag-choice-key { display: inline-grid; width: 26px; height: 26px; flex: 0 0 auto; place-items: center; border-radius: 8px; background: #f0f4f0; color: var(--ink); font-size: 11px; font-weight: 800; }
 .drag-choice-token.is-selected .drag-choice-key { background: #d8ecdf; }
