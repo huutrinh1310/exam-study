@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { answerQuestion, submitFullTest } from "@/app/actions";
 import Icon from "@/components/icon";
+import DragDropAnswer from "@/components/drag-drop-answer";
 import type { QuestionAnswer } from "@/lib/quiz";
 import type { StudyAttempt } from "@/lib/study";
 import {
@@ -356,6 +357,16 @@ export default function StudySession({
               <span className="badge">{question.category}</span>
             </div>
             <h2 id={`question-title-${question.id}`}>{question.prompt}</h2>
+            {attempt.mode === "drag_drop" ? (
+              <DragDropAnswer
+                key={question.id}
+                question={question}
+                value={draft}
+                disabled={isSubmitted || pending || fullTestSubmitted || (isFullTest && !draftLoaded)}
+                onChange={setDraft}
+              />
+            ) : (
+              <>
             {question.kind === "yes_no" ? (
               <div className="answer-options" role="group" aria-label="Answer each statement true or false">
                 {question.choices.map((choice) => {
@@ -428,6 +439,8 @@ export default function StudySession({
                   );
                 })}
               </div>
+            )}
+              </>
             )}
 
             {error ? <p className="error-status" role="alert">{error}</p> : null}

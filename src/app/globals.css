@@ -370,3 +370,33 @@ button:disabled, .button[aria-disabled="true"] { opacity: .58; cursor: not-allow
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
+.drag-drop-answer { display: grid; gap: 12px; min-width: 0; }
+.drag-choice-tokens, .drag-token-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.drag-choice-token { display: flex; min-width: 0; min-height: 48px; align-items: center; gap: 9px; padding: 9px 12px; border: 1px solid var(--line); border-radius: 12px; background: white; color: var(--ink-soft); text-align: left; cursor: grab; }
+.drag-choice-token.is-selected { border-color: #8fc1a8; background: #eff8f2; color: var(--ink); }
+.drag-choice-key { display: inline-grid; width: 26px; height: 26px; flex: 0 0 auto; place-items: center; border-radius: 8px; background: #f0f4f0; color: var(--ink); font-size: 11px; font-weight: 800; }
+.drag-choice-token.is-selected .drag-choice-key { background: #d8ecdf; }
+.drag-drop-target { min-width: 0; border: 2px dashed #a9c7b8; border-radius: 14px; background: #f7fbf8; }
+.drag-choice-target { display: grid; gap: 8px; min-height: 92px; padding: 12px; }
+.drag-choice-target > span { color: var(--muted); font-size: 12px; font-weight: 800; }
+.drag-selected-list { display: flex; flex-wrap: wrap; gap: 8px; }
+.drag-selected-list > strong { align-self: center; color: var(--ink-soft); }
+.drag-selected-token { display: flex; min-height: 48px; min-width: 0; max-width: 100%; align-items: center; gap: 8px; padding: 7px 9px; border: 1px solid #b7d7c7; border-radius: 10px; background: white; }
+.drag-selected-token span { display: inline-grid; width: 24px; height: 24px; flex: 0 0 auto; place-items: center; border-radius: 7px; background: #d8ecdf; font-size: 11px; font-weight: 800; }
+.drag-selected-token small { min-width: 0; overflow-wrap: anywhere; text-align: left; }
+.drag-yes-no-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(120px, 150px) auto; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.drag-yes-no-row:last-child { border-bottom: 0; }
+.drag-yes-no-statement { display: flex; min-width: 0; align-items: flex-start; gap: 8px; color: var(--ink-soft); }
+.drag-yes-no-statement span:last-child { overflow-wrap: anywhere; }
+.drag-yes-no-target { display: grid; min-height: 58px; place-items: center; align-content: center; gap: 2px; padding: 7px; text-align: center; }
+.drag-yes-no-target span { color: var(--muted); font-size: 11px; }
+.drag-token { min-width: 68px; min-height: 48px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: white; cursor: grab; }
+.drag-token.is-selected { border-color: #8fc1a8; background: #eff8f2; }
+@media (max-width: 500px) {
+  .drag-choice-tokens { display: grid; grid-template-columns: 1fr; }
+  .drag-choice-token { width: 100%; }
+  .drag-yes-no-row { grid-template-columns: 1fr; }
+  .drag-yes-no-target { width: 100%; }
+  .drag-token-row { width: 100%; }
+  .drag-token { flex: 1; }
+}
