@@ -345,6 +345,30 @@ export const flashcardDeckSchema = z
 
 export type FlashcardDeck = z.infer<typeof flashcardDeckSchema>;
 
+export const flashcardAnswerSchema = z
+  .object({
+    question_id: z.uuid(),
+    answer: questionAnswerSchema,
+  })
+  .strict();
+
+export const flashcardAnswerSheetSchema = z
+  .array(flashcardAnswerSchema)
+  .max(1_000)
+  .superRefine((answers, context) => {
+    if (
+      new Set(answers.map(({ question_id }) => question_id)).size !==
+      answers.length
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Flashcard answer question IDs must be unique.",
+      });
+    }
+  });
+
+export type FlashcardAnswer = z.infer<typeof flashcardAnswerSchema>;
+
 export const flashcardRevealSchema = z
   .object({
     question_id: z.uuid(),

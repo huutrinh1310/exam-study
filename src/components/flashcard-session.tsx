@@ -120,6 +120,12 @@ export default function FlashcardSession({
           </p>
         </div>
         <div className="flashcard-shortcuts">
+          <Link
+            className="button secondary"
+            href={`/flashcards/${deck.quiz_id}/questions`}
+          >
+            All questions
+          </Link>
           {reviewOnly ? (
             <Link className="button secondary" href={allCardsHref}>
               Study all cards

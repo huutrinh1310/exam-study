@@ -118,6 +118,7 @@ try {
     "list_my_attempts",
     "get_flashcard_deck",
     "get_flashcard_answer",
+    "get_flashcard_answer_sheet",
     "rate_flashcard",
     "submit_full_test",
   ];
@@ -135,7 +136,7 @@ try {
       order by procedure.proname
     `,
   );
-  assert.equal(rpcs.rows.length, rpcNames.length, "all eleven RPCs must exist");
+  assert.equal(rpcs.rows.length, rpcNames.length, "all twelve RPCs must exist");
   assert.deepEqual(
     rpcs.rows.map(({ proname }) => proname),
     [...rpcNames].sort(),

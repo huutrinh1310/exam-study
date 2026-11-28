@@ -7,9 +7,11 @@ import { isUuid, safeRedirectPath } from "./auth-validation";
 import {
   attemptSchema,
   attemptSummarySchema,
+  flashcardAnswerSheetSchema,
   flashcardDeckSchema,
   quizOverviewSchema,
   type AttemptSummary,
+  type FlashcardAnswer,
   type FlashcardDeck,
   type ParsedStudyAttempt,
   type QuizOverview,
@@ -181,6 +183,31 @@ export async function getFlashcardDeck(
     throw dataError(
       "Could not load flashcards",
       "The database returned flashcards for a different quiz.",
+    );
+  }
+  return parsed.data;
+}
+
+export async function getFlashcardAnswerSheet(
+  quizId: string,
+): Promise<FlashcardAnswer[]> {
+  if (!isUuid(quizId)) {
+    throw dataError("Could not load flashcard answers", "The quiz ID is invalid.");
+  }
+
+  const { client } = await getAccount(`/flashcards/${quizId}/questions`);
+  const { data, error } = await client.rpc("get_flashcard_answer_sheet", {
+    p_quiz_id: quizId,
+  });
+  if (error) {
+    throw dataError("Could not load flashcard answers", error.message);
+  }
+
+  const parsed = flashcardAnswerSheetSchema.safeParse(data);
+  if (!parsed.success) {
+    throw dataError(
+      "Could not load flashcard answers",
+      "The database returned invalid flashcard answers.",
     );
   }
   return parsed.data;

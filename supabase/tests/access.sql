@@ -66,6 +66,7 @@ declare
   attempt_questions jsonb;
   flashcard_deck jsonb;
   flashcard_answer jsonb;
+  flashcard_answer_sheet jsonb;
   result jsonb;
   full_result jsonb;
   full_responses jsonb;
@@ -124,6 +125,16 @@ begin
      or flashcard_answer->'answer' <> '["B"]'::jsonb
      or flashcard_answer->>'explanation' <> 'Second is correct.' then
     raise exception 'authorized flashcard reveal returned incorrect feedback';
+  end if;
+  flashcard_answer_sheet := public.get_flashcard_answer_sheet(quiz_id);
+  if jsonb_array_length(flashcard_answer_sheet) <> 3
+     or not exists (
+       select 1
+       from jsonb_array_elements(flashcard_answer_sheet) as item(answer)
+       where item.answer->>'question_id' = card_id::text
+         and item.answer->'answer' = '["B"]'::jsonb
+     ) then
+    raise exception 'authorized flashcard answer sheet returned incorrect answers';
   end if;
   if public.rate_flashcard(card_id, 'known') <> 'known' then
     raise exception 'flashcard rating was not saved';
@@ -191,6 +202,16 @@ begin
   flashcard_answer := public.get_flashcard_answer(card_id);
   if flashcard_answer->'answer' <> '["B"]'::jsonb then
     raise exception 'shared member could not explicitly reveal an authorized card';
+  end if;
+  flashcard_answer_sheet := public.get_flashcard_answer_sheet(quiz_id);
+  if jsonb_array_length(flashcard_answer_sheet) <> 3
+     or not exists (
+       select 1
+       from jsonb_array_elements(flashcard_answer_sheet) as item(answer)
+       where item.answer->>'question_id' = card_id::text
+         and item.answer->'answer' = '["B"]'::jsonb
+     ) then
+    raise exception 'shared member could not view the authorized flashcard answer sheet';
   end if;
 
   select count(*) into visible_count
@@ -745,6 +766,15 @@ begin
   end;
   if not failed then
     raise exception 'stranger could reveal an unavailable flashcard answer';
+  end if;
+  failed := false;
+  begin
+    perform public.get_flashcard_answer_sheet(quiz_id);
+  exception when others then
+    failed := true;
+  end;
+  if not failed then
+    raise exception 'stranger could view answers for an unavailable quiz';
   end if;
   failed := false;
   begin

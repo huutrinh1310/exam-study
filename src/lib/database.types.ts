@@ -232,6 +232,10 @@ export type Database = {
         Args: { p_question_id: string };
         Returns: Json;
       };
+      get_flashcard_answer_sheet: {
+        Args: { p_quiz_id: string };
+        Returns: Json;
+      };
       rate_flashcard: {
         Args: { p_question_id: string; p_rating: "known" | "review" };
         Returns: string;
